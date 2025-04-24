@@ -1,0 +1,6 @@
+
+[CYCLE 1] Mining started at Thu Apr 24 20:59:02 2025
+
+[CYCLE 1] Mining started at Thu Apr 24 21:03:54 2025
+
+[CYCLE 1] Started at Thu Apr 24 21:11:32 2025 | Threads: 1
