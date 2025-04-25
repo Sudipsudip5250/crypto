@@ -3,25 +3,26 @@ import os
 import time
 import threading
 import keyboard  # pip install keyboard
+import psutil    # pip install psutil
 
 # Paths
-xmrig_path = r"./xmrig-6.22.2/xmrig.exe"
-working_dir = r"./xmrig-6.22.2"
-coretemp_txt = r"C:/Program Files/Core Temp/coretemp.txt"
+xmrig_path = r"C:\Users\hp\Desktop\crypto\xmrig-6.22.2\xmrig.exe"
+working_dir = r"C:\Users\hp\Desktop\crypto\xmrig-6.22.2"
+coretemp_txt = r"C:\Program Files\Core Temp\coretemp.txt"
 log_file = os.path.join(working_dir, "miner_log.txt")
 os.chdir(working_dir)
 
 # Settings
-run_duration = 15 * 60  # 15 min
-rest_duration = 5 * 60  # 5 min
-max_temp = 85           # Temp limit
+run_duration = 15 * 60  # 15 minutes
+rest_duration = 5 * 60  # 5 minutes
+max_temp = 70
 min_temp = 55
-max_threads = 3         # Your max CPU threads (i5-2410M has 4 threads)
+max_threads = 3  # You can adjust this to your CPU's limit
+cool_core = 1    # Pin threads to Core #1 (CPU index 1)
 
-# Global Quit Flag
+# Quit flag
 should_quit = False
 
-# Thread listener for 'Q' key quit
 def listen_for_quit():
     global should_quit
     while True:
@@ -30,7 +31,9 @@ def listen_for_quit():
             should_quit = True
             break
 
-# Get CPU temp from CoreTemp export
+# Start the quit key listener
+threading.Thread(target=listen_for_quit, daemon=True).start()
+
 def get_cpu_temp():
     try:
         with open(coretemp_txt, 'r') as f:
@@ -40,30 +43,44 @@ def get_cpu_temp():
     except:
         return None
 
-# Start listener thread
-threading.Thread(target=listen_for_quit, daemon=True).start()
-
 cycle = 1
 while True:
     temp = get_cpu_temp()
-    thread_count = 1
+    thread_count = 0  # Default: no mining
+
     if temp:
         if temp < min_temp:
             thread_count = max_threads
         elif temp < max_temp:
             thread_count = max_threads - 1
-        else:
-            thread_count = 1
+        elif temp >= max_temp:
+            print(f"🔥 CPU temp {temp}°C too high — skipping this cycle to cool down.")
+            with open(log_file, "a") as log:
+                log.write(f"[CYCLE {cycle}] Skipped due to high temp ({temp}°C)\n")
+            time.sleep(rest_duration)
+            if should_quit:
+                print("✅ Quit flag detected. Exiting cleanly.")
+                break
+            cycle += 1
+            continue
 
     print(f"🔁 Cycle {cycle}: Starting miner with {thread_count} threads...")
     with open(log_file, "a") as log:
         log.write(f"\n[CYCLE {cycle}] Started at {time.ctime()} | Threads: {thread_count}\n")
 
-    # Start XMRig with thread config
+    # Launch XMRig with thread count
     miner = subprocess.Popen([xmrig_path, f"--threads={thread_count}"])
-    start_time = time.time()
+    time.sleep(2)
 
-    # Monitor temp during mining cycle
+    # Apply CPU affinity: pin to Core #1 (CPU index 1)
+    try:
+        proc = psutil.Process(miner.pid)
+        proc.cpu_affinity([cool_core])
+        print(f"✅ Miner pinned to Core #{cool_core}")
+    except Exception as e:
+        print("⚠️ Failed to set CPU affinity:", e)
+
+    start_time = time.time()
     while time.time() - start_time < run_duration:
         temp = get_cpu_temp()
         if temp:
@@ -77,7 +94,6 @@ while True:
                 break
         time.sleep(60)
 
-    # Graceful stop
     if miner.poll() is None:
         print("🛑 Stopping miner after full cycle...")
         miner.terminate()

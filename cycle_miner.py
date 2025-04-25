@@ -2,9 +2,9 @@ import subprocess
 import os
 import time
 
-xmrig_path = r"C:\Users\hp\Desktop\crypto\xmrig-6.22.2\xmrig.exe"
-working_dir = r"C:\Users\hp\Desktop\crypto\xmrig-6.22.2"
-coretemp_txt = r"C:\Program Files\Core Temp\coretemp.txt"
+xmrig_path = r"./xmrig-6.22.2/xmrig.exe"
+working_dir = r"./xmrig-6.22.2"
+coretemp_txt = r"C:/Program Files/Core Temp/coretemp.txt"
 log_file = os.path.join(working_dir, "miner_log.txt")
 
 os.chdir(working_dir)
