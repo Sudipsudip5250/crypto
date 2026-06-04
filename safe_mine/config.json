@@ -1,0 +1,16 @@
+{
+  "wallet_address": "4B3WoA2P3fQNancXvdPVvnVcWZfeyC97dRj56pbq6RJdNGS39V4ME4WKHxn7e9KAFeJ87dNxgAdrP8dF5r8bFVxhPDS49gU",
+  "pool_address": "pool.supportxmr.com:3333",
+  "pool_password": "x",
+
+  "cpu_usage_percent": 0.7,
+
+  "pause_temp_c": 80,
+  "resume_temp_c": 70,
+  "emergency_kill_temp_c": 90,
+  "temp_check_interval": 20,
+
+  "xmrig_version": "6.22.0",
+
+  "xmrig_path": ""
+}
