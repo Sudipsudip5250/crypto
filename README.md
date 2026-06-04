@@ -7,19 +7,68 @@ Supports **Linux · Windows · macOS** — for education and research purposes.
 
 ## Quick Start
 
+### Using the CLI scripts (recommended)
+
+**Linux / macOS:**
 ```bash
-# 1. Install Python dependencies
-pip install psutil
-
-# 2. Configure (interactive setup)
-python miner.py --setup
-
-# 3. Mine
-python miner.py
-
-# 4. Check system info (OS, CPU, GPU detection)
-python miner.py --info
+chmod +x mine.sh         # first time only
+./mine.sh install        # install Python deps
+./mine.sh setup          # configure wallet, pool, temperature limits
+./mine.sh start          # mine in foreground  (Ctrl+C to stop)
+./mine.sh bg             # mine in background (daemon)
+./mine.sh status         # check if running
+./mine.sh logs           # watch live log output
+./mine.sh stop           # stop background miner
 ```
+
+**Windows (Command Prompt):**
+```bat
+mine install
+mine setup
+mine start
+mine bg
+mine status
+mine stop
+```
+
+**Windows (PowerShell):**
+```powershell
+.\mine.ps1 install
+.\mine.ps1 setup
+.\mine.ps1 start
+.\mine.ps1 bg
+.\mine.ps1 status
+.\mine.ps1 stop
+```
+
+### Direct Python (any OS)
+```bash
+pip install psutil               # install deps
+python miner.py --setup          # interactive config wizard
+python miner.py                  # start mining
+python miner.py --info           # show OS / CPU / GPU info
+```
+
+---
+
+---
+
+## CLI Reference
+
+All three CLI scripts (`mine.sh`, `mine.bat`, `mine.ps1`) share the same commands:
+
+| Command | Description |
+|---------|-------------|
+| `start` | Start mining in the **foreground** — Ctrl+C to stop |
+| `bg` | Start mining in the **background** (daemon / hidden window) |
+| `stop` | Stop a background miner gracefully (SIGTERM → SIGKILL) |
+| `restart` | Stop + start in the background |
+| `status` | Show running state and last 5 log lines |
+| `logs` | Tail the log file in real time |
+| `setup` | Interactive config wizard |
+| `info` | Print OS, CPU model, core count, GPU detection |
+| `install` | `pip install -r requirements.txt` |
+| `help` | Show command reference |
 
 ---
 
@@ -27,7 +76,10 @@ python miner.py --info
 
 ```
 .
-├── miner.py              ← single entry point (run this)
+├── mine.sh               ← CLI for Linux / macOS  (bash)
+├── mine.bat              ← CLI for Windows         (Command Prompt)
+├── mine.ps1              ← CLI for Windows         (PowerShell)
+├── miner.py              ← Python entry point
 ├── config.json           ← all your settings
 ├── requirements.txt
 ├── README.md
