@@ -1,0 +1,24 @@
+{
+  "_comment": "Edit this file to configure your miner. All settings are described below.",
+
+  "wallet_address": "4B3WoA2P3fQNancXvdPVvnVcWZfeyC97dRj56pbq6RJdNGS39V4ME4WKHxn7e9KAFeJ87dNxgAdrP8dF5r8bFVxhPDS49gU",
+  "worker_name": "myrig",
+  "pool_address": "pool.supportxmr.com:3333",
+  "pool_password": "x",
+
+  "cpu_usage_percent": 0.70,
+  "randomx_mode": "auto",
+  "cpu_priority": 2,
+
+  "pause_temp_c": 80,
+  "resume_temp_c": 70,
+  "emergency_kill_temp_c": 90,
+  "temp_check_interval_sec": 20,
+
+  "duty_cycle_enabled": false,
+  "mine_duration_min": 15,
+  "rest_duration_min": 5,
+
+  "xmrig_version": "6.22.2",
+  "log_to_file": true
+}
