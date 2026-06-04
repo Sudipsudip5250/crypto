@@ -79,6 +79,10 @@ def download_xmrig(version: str) -> Path:
 
     BINARY.chmod(0o755)
     log.info("XMRig installed → %s", BINARY)
+
+    from core.updater import write_cached_version
+    write_cached_version(version)
+
     return BINARY
 
 

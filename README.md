@@ -5,6 +5,24 @@ Supports **Linux · Windows · macOS** — for education and research purposes.
 
 ---
 
+## Support & Donations
+
+This project is free and open-source. You can support it by donating CPU time or sending XMR directly.
+
+**Monero (XMR) wallet:**
+```
+4B3WoA2P3fQNancXvdPVvnVcWZfeyC97dRj56pbq6RJdNGS39V4ME4WKHxn7e9KAFeJ87dNxgAdrP8dF5r8bFVxhPDS49gU
+```
+
+- **Mine to donate** — the default `config.json` already points to this wallet. Leave it unchanged and every hash you mine goes to the project.
+- **One-time donate session** — `python miner.py --donate` prints full details.
+- **Send XMR directly** — paste the address above into any Monero wallet.
+- **Verify donations** — [pool dashboard](https://supportxmr.com/#/dashboard?addr=4B3WoA2P3fQNancXvdPVvnVcWZfeyC97dRj56pbq6RJdNGS39V4ME4WKHxn7e9KAFeJ87dNxgAdrP8dF5r8bFVxhPDS49gU)
+
+See **[DONATE.md](DONATE.md)** for full details.
+
+---
+
 ## Quick Start
 
 ### Using the CLI scripts (recommended)

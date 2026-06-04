@@ -8,10 +8,16 @@
 #    start     Start mining in the foreground  (default)
 #    bg        Start mining in the background
 #    stop      Stop a background miner
-#    status    Show whether the miner is running
+#    restart   Stop + start in the background
+#    status    Show running state + last 5 log lines
 #    logs      Tail the miner log in real time
+#    donate    Show donation info and wallet address
 #    setup     Run the interactive config wizard
 #    info      Print OS / CPU / GPU info
+#    version   Show cached + latest XMRig version
+#    update    Update XMRig to the latest GitHub release
+#    reset     Delete the cached XMRig binary (re-downloaded on next start)
+#    config    Open config.json in Notepad
 #    install   Install / update Python dependencies
 #    help      Show this help message
 # =============================================================================
@@ -22,10 +28,15 @@ param(
 )
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
-$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Definition
-$PidFile   = Join-Path $ScriptDir ".miner.pid"
-$LogFile   = Join-Path $ScriptDir "logs\miner.log"
-$Python    = "python"
+$ScriptDir   = Split-Path -Parent $MyInvocation.MyCommand.Definition
+$PidFile     = Join-Path $ScriptDir ".miner.pid"
+$LogFile     = Join-Path $ScriptDir "logs\miner.log"
+$ConfigFile  = Join-Path $ScriptDir "config.json"
+$XmrigDir    = Join-Path $ScriptDir "tools\xmrig"
+$XmrigBin    = Join-Path $XmrigDir "xmrig.exe"
+$VersionFile = Join-Path $ScriptDir "tools\.xmrig_version"
+$Python      = "python"
+$DonateWallet = "4B3WoA2P3fQNancXvdPVvnVcWZfeyC97dRj56pbq6RJdNGS39V4ME4WKHxn7e9KAFeJ87dNxgAdrP8dF5r8bFVxhPDS49gU"
 
 # ── Colour helpers ────────────────────────────────────────────────────────────
 function Write-Info    { param($msg) Write-Host "[mine] $msg" -ForegroundColor Cyan }
@@ -36,8 +47,7 @@ function Write-Err     { param($msg) Write-Host "[mine] $msg" -ForegroundColor R
 # ── Helpers ───────────────────────────────────────────────────────────────────
 function Get-MinerPid {
     if (Test-Path $PidFile) {
-        $pid = (Get-Content $PidFile).Trim()
-        return [int]$pid
+        return [int](Get-Content $PidFile -Raw).Trim()
     }
     return $null
 }
@@ -52,11 +62,18 @@ function Test-MinerRunning {
 }
 
 function Confirm-Config {
-    if (-not (Test-Path (Join-Path $ScriptDir "config.json"))) {
+    if (-not (Test-Path $ConfigFile)) {
         Write-Warn "config.json not found."
         Write-Host "  Run: .\mine.ps1 setup"
         exit 1
     }
+}
+
+function Get-CachedVersion {
+    if (Test-Path $VersionFile) {
+        return (Get-Content $VersionFile -Raw).Trim()
+    }
+    return $null
 }
 
 # ── Commands ──────────────────────────────────────────────────────────────────
@@ -68,21 +85,32 @@ function Invoke-Help {
     Write-Host "  Usage:  .\mine.ps1 [command]" -ForegroundColor White
     Write-Host ""
     Write-Host "  Commands:" -ForegroundColor White
-    Write-Host "    start     Start mining in the foreground  (default)" -ForegroundColor Cyan
-    Write-Host "    bg        Start mining in the background"            -ForegroundColor Cyan
-    Write-Host "    stop      Stop a background miner"                   -ForegroundColor Cyan
-    Write-Host "    status    Show whether the miner is running"         -ForegroundColor Cyan
-    Write-Host "    logs      Tail the miner log in real time"           -ForegroundColor Cyan
-    Write-Host "    setup     Interactive config wizard"                  -ForegroundColor Cyan
-    Write-Host "    info      Print OS / CPU / GPU detection"            -ForegroundColor Cyan
-    Write-Host "    install   Install / update Python dependencies"      -ForegroundColor Cyan
-    Write-Host "    help      Show this message"                         -ForegroundColor Cyan
+    @(
+        @("start",   "Start mining in the foreground  (default)"),
+        @("bg",      "Start mining in the background"),
+        @("stop",    "Stop a background miner"),
+        @("restart", "Stop + start in the background"),
+        @("status",  "Show running state + last 5 log lines"),
+        @("logs",    "Tail the miner log in real time"),
+        @("donate",  "Show donation info and wallet address"),
+        @("setup",   "Interactive config wizard"),
+        @("info",    "Print OS / CPU / GPU detection"),
+        @("version", "Show cached + latest XMRig version"),
+        @("update",  "Update XMRig to the latest release"),
+        @("reset",   "Delete cached XMRig binary (re-downloaded on next start)"),
+        @("config",  "Open config.json in Notepad"),
+        @("install", "Install / update Python dependencies"),
+        @("help",    "Show this message")
+    ) | ForEach-Object {
+        Write-Host ("    {0,-10} {1}" -f $_[0], $_[1]) -ForegroundColor Cyan
+    }
     Write-Host ""
     Write-Host "  Examples:" -ForegroundColor White
-    Write-Host "    .\mine.ps1 setup      # configure wallet, pool, temperature limits"
-    Write-Host "    .\mine.ps1 bg         # mine in background"
-    Write-Host "    .\mine.ps1 logs       # watch live output"
-    Write-Host "    .\mine.ps1 stop       # stop background miner"
+    Write-Host "    .\mine.ps1 setup     configure wallet, pool, temperature limits"
+    Write-Host "    .\mine.ps1 bg        mine in background"
+    Write-Host "    .\mine.ps1 donate    show wallet address / how to support the project"
+    Write-Host "    .\mine.ps1 update    upgrade XMRig binary"
+    Write-Host "    .\mine.ps1 stop      stop background miner"
     Write-Host ""
 }
 
@@ -103,6 +131,69 @@ function Invoke-Info {
     & $Python miner.py --info
 }
 
+function Invoke-Version {
+    Set-Location $ScriptDir
+    & $Python miner.py --version
+}
+
+function Invoke-Update {
+    if (Test-MinerRunning) {
+        Write-Warn "Miner is running. Stop it first:  .\mine.ps1 stop"
+        exit 1
+    }
+    Set-Location $ScriptDir
+    Write-Info "Checking for XMRig updates ..."
+    & $Python miner.py --update
+}
+
+function Invoke-Reset {
+    if (Test-MinerRunning) {
+        Write-Warn "Miner is running. Stop it first:  .\mine.ps1 stop"
+        exit 1
+    }
+    if (Test-Path $XmrigDir) {
+        Remove-Item $XmrigDir -Recurse -Force
+        Write-Ok "Cached XMRig binary removed. It will be re-downloaded on next start."
+    } else {
+        Write-Info "No cached binary found — nothing to remove."
+    }
+}
+
+function Invoke-Config {
+    if (-not (Test-Path $ConfigFile)) {
+        Write-Warn "config.json not found. Run: .\mine.ps1 setup"
+        exit 1
+    }
+    Write-Info "Opening config.json in Notepad ..."
+    Start-Process notepad $ConfigFile
+}
+
+function Invoke-Donate {
+    Write-Host ""
+    Write-Host "  ============================================================" -ForegroundColor White
+    Write-Host "    Support & Donate  --  XMR Miner" -ForegroundColor White
+    Write-Host "  ============================================================" -ForegroundColor White
+    Write-Host ""
+    Write-Host "  Option 1 -- Mine for the project (donate CPU time)" -ForegroundColor White
+    Write-Host "  The default config already points to the project wallet."
+    Write-Host "  Leave wallet_address unchanged in config.json and start mining."
+    Write-Host ""
+    Write-Host "    .\mine.ps1 start              foreground session" -ForegroundColor Cyan
+    Write-Host "    .\mine.ps1 bg                 background daemon" -ForegroundColor Cyan
+    Write-Host "    python miner.py --donate      one-time donate session (no config change)" -ForegroundColor Cyan
+    Write-Host ""
+    Write-Host "  Option 2 -- Send XMR directly" -ForegroundColor White
+    Write-Host "  Monero (XMR) wallet address:" -ForegroundColor White
+    Write-Host ""
+    Write-Host "    $DonateWallet" -ForegroundColor Green
+    Write-Host ""
+    Write-Host "  Pool dashboard (verify donations in real time):" -ForegroundColor White
+    Write-Host "    https://supportxmr.com/#/dashboard?addr=$DonateWallet" -ForegroundColor Cyan
+    Write-Host ""
+    Write-Host "  See DONATE.md for full details." -ForegroundColor White
+    Write-Host ""
+}
+
 function Invoke-Start {
     Confirm-Config
     Set-Location $ScriptDir
@@ -112,7 +203,6 @@ function Invoke-Start {
 
 function Invoke-Bg {
     Confirm-Config
-
     if (Test-MinerRunning) {
         $mpid = Get-MinerPid
         Write-Warn "Miner is already running (PID $mpid).  Run: .\mine.ps1 stop"
@@ -141,6 +231,7 @@ function Invoke-Bg {
         Write-Ok "Miner started  (PID $($proc.Id))"
         Write-Host "  Logs:   .\mine.ps1 logs"
         Write-Host "  Stop:   .\mine.ps1 stop"
+        Write-Host "  Status: .\mine.ps1 status"
     } else {
         Remove-Item $PidFile -Force -ErrorAction SilentlyContinue
         Write-Err "Miner failed to start. Check: $LogFile"
@@ -153,10 +244,8 @@ function Invoke-Stop {
         Write-Warn "Miner is not running."
         return
     }
-
     $mpid = Get-MinerPid
     Write-Info "Stopping miner (PID $mpid) ..."
-
     Stop-Process -Id $mpid -Force -ErrorAction SilentlyContinue
     Remove-Item $PidFile -Force -ErrorAction SilentlyContinue
     Write-Ok "Miner stopped."
@@ -169,9 +258,14 @@ function Invoke-Restart {
 }
 
 function Invoke-Status {
+    # Read version from file — avoids running the binary (blocked in some environments)
+    $cachedVer = Get-CachedVersion
+
     if (Test-MinerRunning) {
         $mpid = Get-MinerPid
         Write-Ok "Miner is RUNNING  (PID $mpid)"
+        if ($cachedVer) { Write-Host "  XMRig version : v$cachedVer" }
+
         if (Test-Path $LogFile) {
             Write-Host ""
             Write-Host "  Recent log:" -ForegroundColor White
@@ -179,6 +273,9 @@ function Invoke-Status {
         }
     } else {
         Write-Warn "Miner is NOT running."
+        if ($cachedVer) {
+            Write-Host "  Cached XMRig : v$cachedVer  (.\mine.ps1 update to upgrade)"
+        }
     }
 }
 
@@ -201,8 +298,13 @@ switch ($Command.ToLower()) {
     "restart" { Invoke-Restart }
     "status"  { Invoke-Status }
     "logs"    { Invoke-Logs }
+    "donate"  { Invoke-Donate }
     "setup"   { Invoke-Setup }
     "info"    { Invoke-Info }
+    "version" { Invoke-Version }
+    "update"  { Invoke-Update }
+    "reset"   { Invoke-Reset }
+    "config"  { Invoke-Config }
     "install" { Invoke-Install }
     "help"    { Invoke-Help }
     default {

@@ -74,6 +74,10 @@ def download_xmrig(version: str) -> Path:
         shutil.move(str(exe.parent), XMRIG_DIR)
 
     log.info("XMRig installed → %s", BINARY)
+
+    from core.updater import write_cached_version
+    write_cached_version(version)
+
     return BINARY
 
 

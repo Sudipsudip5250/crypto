@@ -1,5 +1,6 @@
 {
-  "_comment": "Edit this file to configure your miner. All settings are described below.",
+  "_comment": "Edit this file to configure your miner. See README.md or run: python miner.py --setup",
+  "_donate": "The default wallet below belongs to the project author. Leave it as-is to donate your mining power, or replace it with your own address. You can also run: python miner.py --donate for a one-time donate session without editing this file.",
 
   "wallet_address": "4B3WoA2P3fQNancXvdPVvnVcWZfeyC97dRj56pbq6RJdNGS39V4ME4WKHxn7e9KAFeJ87dNxgAdrP8dF5r8bFVxhPDS49gU",
   "worker_name": "myrig",
