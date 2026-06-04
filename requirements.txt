@@ -1,2 +1,2 @@
-subprocess
 keyboard
+psutil>=5.9
