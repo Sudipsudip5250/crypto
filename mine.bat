@@ -13,6 +13,7 @@ REM    restart   Stop + start in the background
 REM    status    Show running state + last 5 log lines
 REM    logs      Open the miner log in Notepad
 REM    donate    Show donation info and wallet address
+REM    donate-mode  Mine to project wallet for N min (no config change)
 REM    setup     Run the interactive config wizard
 REM    info      Print OS / CPU / GPU info
 REM    version   Show cached + latest XMRig version
@@ -45,8 +46,9 @@ if "%~1"=="stop"     goto :cmd_stop
 if "%~1"=="restart"  goto :cmd_restart
 if "%~1"=="status"   goto :cmd_status
 if "%~1"=="logs"     goto :cmd_logs
-if "%~1"=="donate"   goto :cmd_donate
-if "%~1"=="setup"    goto :cmd_setup
+if "%~1"=="donate"        goto :cmd_donate
+if "%~1"=="donate-mode"  goto :cmd_donate_mode
+if "%~1"=="setup"         goto :cmd_setup
 if "%~1"=="info"     goto :cmd_info
 if "%~1"=="version"  goto :cmd_version
 if "%~1"=="update"   goto :cmd_update
@@ -77,6 +79,7 @@ echo     restart    Stop + start in the background
 echo     status     Show running state + last 5 log lines
 echo     logs       Open the miner log in Notepad
 echo     donate     Show donation info and wallet address
+echo     donate-mode  Mine to project wallet for N min (default 10, no config change)
 echo     setup      Interactive config wizard
 echo     info       Print OS / CPU / GPU detection
 echo     version    Show cached + latest XMRig version
@@ -90,6 +93,7 @@ echo   Examples:
 echo     mine setup      configure wallet, pool, temperature limits
 echo     mine bg         mine in background
 echo     mine donate     show wallet address / how to support the project
+echo     mine donate-mode  donate 10 min of CPU (mine donate-mode 30 for 30 min)
 echo     mine update     upgrade XMRig binary
 echo     mine stop       stop background miner
 echo.
@@ -157,6 +161,20 @@ echo [mine] Opening config.json in Notepad ...
 start notepad "%CONFIG_FILE%"
 goto :end
 
+:cmd_donate_mode
+if not exist "%CONFIG_FILE%" (
+    echo [mine] config.json not found. Run:  mine setup
+    goto :end
+)
+set DONATE_MINS=10
+if not "%~2"=="" set DONATE_MINS=%~2
+cd /d "%SCRIPT_DIR%"
+echo [mine] Starting donate session -- mining to project wallet for %DONATE_MINS% minute(s) ...
+echo        Your config.json is NOT modified.  Press Ctrl+C to stop early.
+echo.
+%PYTHON% miner.py --donate-mode --donate-time %DONATE_MINS%
+goto :end
+
 :cmd_donate
 echo.
 echo   ============================================================
@@ -169,7 +187,8 @@ echo   Leave wallet_address unchanged in config.json and start mining.
 echo.
 echo     mine start               foreground session
 echo     mine bg                  background daemon
-echo     python miner.py --donate one-time donate session (no config change)
+echo     mine donate-mode         donate 10 min  (no config change)
+echo     mine donate-mode 30      donate 30 min  (no config change)
 echo.
 echo   Option 2 -- Send XMR directly
 echo   Monero (XMR) wallet address:

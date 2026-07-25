@@ -11,8 +11,10 @@ Usage
     python miner.py --setup      # interactive config wizard
     python miner.py --info       # print system info and exit
     python miner.py --update     # update XMRig to the latest release
-    python miner.py --version    # show cached XMRig version and exit
-    python miner.py --donate     # show donation info (wallet address etc.)
+    python miner.py --version         # show cached XMRig version and exit
+    python miner.py --donate          # show donation info (wallet address etc.)
+    python miner.py --donate-mode     # mine to project wallet for 10 min (no config change)
+    python miner.py --donate-mode --donate-time 30  # donate for 30 minutes
 
 Press Ctrl+C to stop the miner at any time.
 
@@ -93,6 +95,10 @@ def parse_args() -> argparse.Namespace:
                         help="Show the cached XMRig version and exit")
     parser.add_argument("--donate", action="store_true",
                         help="Show donation info (wallet address, pool dashboard) and exit")
+    parser.add_argument("--donate-mode", action="store_true",
+                        help="Mine to the project wallet for a set time without changing config.json")
+    parser.add_argument("--donate-time", type=int, default=10, metavar="MINUTES",
+                        help="How many minutes to mine in donate-mode (default: 10)")
     return parser.parse_args()
 
 
@@ -139,8 +145,9 @@ def print_donate_info() -> None:
     print("  The default config.json already points to the project wallet.")
     print("  Leave wallet_address unchanged and run:")
     print()
-    print("    python miner.py               mine in foreground")
-    print("    python miner.py --donate      (you are here — info only)")
+    print("    python miner.py                           mine in foreground")
+    print("    python miner.py --donate-mode             donate 10 min (no config change)")
+    print("    python miner.py --donate-mode --donate-time 30  donate 30 min")
     print()
     print("  Option 2 — Send XMR directly")
     print("  Monero (XMR) wallet address:")
@@ -151,6 +158,87 @@ def print_donate_info() -> None:
     print(f"    https://supportxmr.com/#/dashboard?addr={DONATE_WALLET}")
     print()
     print("  See DONATE.md for full details.")
+    print()
+
+
+# ---------------------------------------------------------------------------
+# --donate-mode  (actually mines to the project wallet for N minutes)
+# ---------------------------------------------------------------------------
+
+def run_donate_mode(minutes: int) -> None:
+    """Start XMRig pointed at the project wallet for *minutes* minutes.
+
+    The user's config.json is never touched — we clone the loaded config dict
+    and override wallet_address + worker_name in memory only.
+    """
+    import copy
+    import threading
+    import signal
+
+    log = setup_logging(False)
+    log.info("━━━  DONATE MODE  ━━━  mining to project wallet for %d minute(s)  ━━━", minutes)
+
+    print()
+    print("╔══════════════════════════════════════════════════════════════╗")
+    print("║          Donate Mode  —  Thank you!  ♥                      ║")
+    print("╚══════════════════════════════════════════════════════════════╝")
+    print(f"  Mining to project wallet for {minutes} minute(s).")
+    print("  Your config.json is NOT changed.")
+    print("  Press Ctrl+C at any time to stop early.")
+    print()
+
+    cfg = load_config()
+    donate_cfg = copy.deepcopy(cfg)
+    donate_cfg["wallet_address"] = DONATE_WALLET
+    donate_cfg["worker_name"]    = "donate"
+    donate_cfg["duty_cycle_enabled"] = False   # always continuous in donate mode
+    donate_cfg["log_to_file"]    = False
+
+    platform_mod = get_platform_module()
+    log_cpu_info()
+
+    xmrig_bin = platform_mod.ensure_xmrig(donate_cfg["xmrig_version"])
+    log.info("XMRig binary: %s", xmrig_bin)
+
+    stop_event  = threading.Event()
+    _proc_ref: list = []
+
+    def shutdown(*_) -> None:
+        log.info("Donate session interrupted — stopping miner …")
+        stop_event.set()
+        if _proc_ref:
+            stop_miner(_proc_ref[0])
+        sys.exit(0)
+
+    signal.signal(signal.SIGINT, shutdown)
+    if hasattr(signal, "SIGTERM"):
+        signal.signal(signal.SIGTERM, shutdown)
+
+    # Timer thread: stop automatically after N minutes
+    def _timer() -> None:
+        stop_event.wait(timeout=minutes * 60)
+        if not stop_event.is_set():
+            log.info("Donate session complete (%d min) — stopping miner …", minutes)
+            stop_event.set()
+            if _proc_ref:
+                stop_miner(_proc_ref[0])
+
+    t = threading.Thread(target=_timer, daemon=True)
+    t.start()
+
+    proc, fwd_stop = start_miner(
+        xmrig_path   = str(xmrig_bin),
+        cfg          = donate_cfg,
+        platform_mod = platform_mod,
+        build_cmd_fn = build_cmd,
+    )
+    _proc_ref.append(proc)
+    thermal_loop(proc, donate_cfg, stop_event)
+    stop_miner(proc, fwd_stop)
+
+    print()
+    print("  Donate session finished. Thank you for supporting the project!")
+    print(f"  Pool dashboard: https://supportxmr.com/#/dashboard?addr={DONATE_WALLET}")
     print()
 
 
@@ -188,6 +276,11 @@ def main() -> None:
     # ── --donate ────────────────────────────────────────────────────────────
     if args.donate:
         print_donate_info()
+        return
+
+    # ── --donate-mode ────────────────────────────────────────────────────────
+    if args.donate_mode:
+        run_donate_mode(args.donate_time)
         return
 
     # ── --setup ─────────────────────────────────────────────────────────────

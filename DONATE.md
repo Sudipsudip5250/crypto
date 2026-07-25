@@ -18,11 +18,21 @@ If you have not changed `wallet_address`, you are already donating every hash yo
 To donate for a quick session without changing your own config:
 
 ```bash
-python miner.py --donate
+# Linux / macOS
+./mine.sh donate-mode           # 10-minute session (default)
+./mine.sh donate-mode 30        # 30-minute session
+
+# Windows
+mine donate-mode                # 10-minute session
+mine donate-mode 30             # 30-minute session
+
+# Any platform via Python directly
+python miner.py --donate-mode                  # 10-minute session
+python miner.py --donate-mode --donate-time 30 # 30-minute session
 ```
 
 This temporarily overrides your wallet with the project wallet for that session only.
-Your `config.json` is not modified.
+Your `config.json` is never modified.
 
 ---
 

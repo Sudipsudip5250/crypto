@@ -13,6 +13,7 @@
 #    status      Show whether the miner is running + last 5 log lines
 #    logs        Tail the miner log in real time (Ctrl+C to exit)
 #    donate      Show donation info and wallet address
+#    donate-mode Mine to project wallet for N min (no config change)
 #    setup       Run the interactive config wizard
 #    info        Print OS / CPU / GPU info
 #    version     Show cached + latest XMRig version
@@ -93,6 +94,7 @@ ${BLD}Commands:${RST}
   ${CYN}version${RST}    Show cached + latest XMRig version
   ${CYN}update${RST}     Update XMRig to the latest release
   ${CYN}donate${RST}     Show donation info and wallet address
+  ${CYN}donate-mode${RST} Mine to project wallet for N min  (default 10, no config change)
   ${CYN}reset${RST}      Delete cached XMRig binary  (re-downloaded on next start)
   ${CYN}config${RST}     Open config.json in \$EDITOR / nano / vi
   ${CYN}install${RST}    Install / update Python dependencies
@@ -103,6 +105,7 @@ ${BLD}Examples:${RST}
   ./mine.sh bg          # mine in background
   ./mine.sh logs        # watch live output
   ./mine.sh donate      # show wallet address / how to support the project
+  ./mine.sh donate-mode # donate 10 min of CPU  (./mine.sh donate-mode 30 for 30 min)
   ./mine.sh update      # upgrade XMRig binary
   ./mine.sh stop        # stop background miner
 "
@@ -255,6 +258,18 @@ cmd_status() {
 
 DONATE_WALLET="4B3WoA2P3fQNancXvdPVvnVcWZfeyC97dRj56pbq6RJdNGS39V4ME4WKHxn7e9KAFeJ87dNxgAdrP8dF5r8bFVxhPDS49gU"
 
+cmd_donate_mode() {
+    # Usage: ./mine.sh donate-mode [MINUTES]
+    # $1 is already consumed as COMMAND; the optional minutes is the next shell arg
+    check_config
+    local mins="${DONATE_MINUTES:-10}"
+    cd "$SCRIPT_DIR"
+    info "Starting donate session — mining to project wallet for ${mins} minute(s) …"
+    info "Your config.json is NOT modified.  Press Ctrl+C to stop early."
+    echo ""
+    exec "$PYTHON" miner.py --donate-mode --donate-time "$mins"
+}
+
 cmd_donate() {
     echo ""
     echo -e "${BLD}╔══════════════════════════════════════════════════════════════╗${RST}"
@@ -265,9 +280,10 @@ cmd_donate() {
     echo -e "  The default config already points to the project wallet."
     echo -e "  Leave ${CYN}wallet_address${RST} unchanged in config.json and just start mining."
     echo ""
-    echo -e "    ${CYN}./mine.sh start${RST}         foreground session"
-    echo -e "    ${CYN}./mine.sh bg${RST}            background daemon"
-    echo -e "    ${CYN}python miner.py --donate${RST}  one-time donate session (no config change)"
+    echo -e "    ${CYN}./mine.sh start${RST}              foreground session"
+    echo -e "    ${CYN}./mine.sh bg${RST}                 background daemon"
+    echo -e "    ${CYN}./mine.sh donate-mode${RST}         donate 10 min  (no config change)"
+    echo -e "    ${CYN}./mine.sh donate-mode 30${RST}      donate 30 min  (no config change)"
     echo ""
     echo -e "${BLD}  Option 2 — Send XMR directly${RST}"
     echo -e "  Monero (XMR) wallet address:"
@@ -301,8 +317,9 @@ case "$COMMAND" in
     restart) cmd_restart ;;
     status)  cmd_status  ;;
     logs)    cmd_logs    ;;
-    donate)  cmd_donate  ;;
-    setup)   cmd_setup   ;;
+    donate)      cmd_donate      ;;
+    donate-mode) DONATE_MINUTES="${2:-10}" cmd_donate_mode ;;
+    setup)       cmd_setup       ;;
     info)    cmd_info    ;;
     version) cmd_version ;;
     update)  cmd_update  ;;

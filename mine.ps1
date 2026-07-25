@@ -12,6 +12,7 @@
 #    status    Show running state + last 5 log lines
 #    logs      Tail the miner log in real time
 #    donate    Show donation info and wallet address
+#    donate-mode  Mine to project wallet for N min (no config change)
 #    setup     Run the interactive config wizard
 #    info      Print OS / CPU / GPU info
 #    version   Show cached + latest XMRig version
@@ -92,8 +93,9 @@ function Invoke-Help {
         @("restart", "Stop + start in the background"),
         @("status",  "Show running state + last 5 log lines"),
         @("logs",    "Tail the miner log in real time"),
-        @("donate",  "Show donation info and wallet address"),
-        @("setup",   "Interactive config wizard"),
+        @("donate",      "Show donation info and wallet address"),
+        @("donate-mode", "Mine to project wallet for N min (default 10, no config change)"),
+        @("setup",       "Interactive config wizard"),
         @("info",    "Print OS / CPU / GPU detection"),
         @("version", "Show cached + latest XMRig version"),
         @("update",  "Update XMRig to the latest release"),
@@ -168,6 +170,16 @@ function Invoke-Config {
     Start-Process notepad $ConfigFile
 }
 
+function Invoke-DonateMode {
+    param([int]$Minutes = 10)
+    Confirm-Config
+    Set-Location $ScriptDir
+    Write-Info "Starting donate session — mining to project wallet for $Minutes minute(s) ..."
+    Write-Info "Your config.json is NOT modified.  Press Ctrl+C to stop early."
+    Write-Host ""
+    & $Python miner.py --donate-mode --donate-time $Minutes
+}
+
 function Invoke-Donate {
     Write-Host ""
     Write-Host "  ============================================================" -ForegroundColor White
@@ -180,7 +192,8 @@ function Invoke-Donate {
     Write-Host ""
     Write-Host "    .\mine.ps1 start              foreground session" -ForegroundColor Cyan
     Write-Host "    .\mine.ps1 bg                 background daemon" -ForegroundColor Cyan
-    Write-Host "    python miner.py --donate      one-time donate session (no config change)" -ForegroundColor Cyan
+    Write-Host "    .\mine.ps1 donate-mode        donate 10 min  (no config change)" -ForegroundColor Cyan
+    Write-Host "    .\mine.ps1 donate-mode 30     donate 30 min  (no config change)" -ForegroundColor Cyan
     Write-Host ""
     Write-Host "  Option 2 -- Send XMR directly" -ForegroundColor White
     Write-Host "  Monero (XMR) wallet address:" -ForegroundColor White
@@ -298,7 +311,11 @@ switch ($Command.ToLower()) {
     "restart" { Invoke-Restart }
     "status"  { Invoke-Status }
     "logs"    { Invoke-Logs }
-    "donate"  { Invoke-Donate }
+    "donate"      { Invoke-Donate }
+    "donate-mode" {
+        $mins = if ($args.Count -ge 1 -and $args[0] -match '^\d+$') { [int]$args[0] } else { 10 }
+        Invoke-DonateMode -Minutes $mins
+    }
     "setup"   { Invoke-Setup }
     "info"    { Invoke-Info }
     "version" { Invoke-Version }
