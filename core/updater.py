@@ -4,10 +4,15 @@ core/updater.py
 XMRig auto-update utilities.
 
   get_latest_version()     → query GitHub API for the latest XMRig release tag
-  get_cached_version()     → read version from the already-downloaded binary
+  get_cached_version()     → read version from the local version file
   needs_update(cfg)        → True if a newer version is available
   update_xmrig(cfg)        → download + replace the cached binary
+
+For educational and research purposes only — see DISCLAIMER.md.
 """
+# ── Educational / research use only ─────────────────────────────────────────
+# See DISCLAIMER.md and LICENSE for full legal notices.
+# ────────────────────────────────────────────────────────────────────────────
 
 from __future__ import annotations
 
@@ -30,8 +35,8 @@ TOOLS_DIR    = BASE_DIR / "tools"
 XMRIG_DIR    = TOOLS_DIR / "xmrig"
 VERSION_FILE = TOOLS_DIR / ".xmrig_version"   # written after every download
 
-_SYS = platform.system().lower()
-IS_WINDOWS = _SYS.startswith("win")
+_SYS        = platform.system().lower()
+IS_WINDOWS  = _SYS.startswith("win")
 
 
 def _cached_binary() -> Path | None:
@@ -43,7 +48,9 @@ def _cached_binary() -> Path | None:
 def write_cached_version(version: str) -> None:
     """Persist the version string to tools/.xmrig_version after a download."""
     TOOLS_DIR.mkdir(exist_ok=True)
-    VERSION_FILE.write_text(version.strip(), encoding="utf-8")
+    # Strip any pre-release suffix before storing (e.g. "6.22.2-beta" → "6.22.2")
+    clean = re.split(r"[^0-9.]", version.strip())[0]
+    VERSION_FILE.write_text(clean, encoding="utf-8")
 
 
 def get_cached_version() -> str | None:
@@ -60,7 +67,7 @@ def get_cached_version() -> str | None:
             ver = VERSION_FILE.read_text(encoding="utf-8").strip()
             if re.match(r"\d+\.\d+\.\d+", ver):
                 return ver
-        except Exception:
+        except OSError:
             pass
 
     # Fallback: try running the binary (may be blocked in sandboxes)
@@ -88,7 +95,7 @@ def get_cached_version() -> str | None:
 def get_latest_version() -> str | None:
     """
     Query the GitHub releases API and return the latest XMRig version string
-    (e.g. "6.22.2"), or None on network/parse failure.
+    (e.g. "6.22.2"), or None on network / parse failure.
     """
     try:
         req = urllib.request.Request(
@@ -96,12 +103,20 @@ def get_latest_version() -> str | None:
             headers={"User-Agent": "xmr-miner-updater/1.0"},
         )
         with urllib.request.urlopen(req, timeout=10) as resp:
-            data = json.loads(resp.read().decode())
+            raw = resp.read().decode("utf-8", errors="replace")
+
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            log.warning("GitHub API returned unexpected JSON: %s", exc)
+            return None
 
         tag = data.get("tag_name", "")          # e.g. "v6.22.2"
         match = re.search(r"(\d+\.\d+\.\d+)", tag)
         if match:
             return match.group(1)
+
+        log.warning("Could not parse version tag from GitHub response: %r", tag)
 
     except urllib.error.URLError as exc:
         log.warning("Could not reach GitHub API: %s", exc)
@@ -112,7 +127,19 @@ def get_latest_version() -> str | None:
 
 
 def _version_tuple(ver: str) -> tuple[int, ...]:
-    return tuple(int(x) for x in ver.split("."))
+    """
+    Convert a version string to a comparable tuple of ints.
+
+    Handles plain releases ("6.22.2") and pre-release suffixes ("6.22.2-beta",
+    "6.22.2-rc1") by stripping everything after the first non-numeric,
+    non-dot character.
+    """
+    # Keep only the numeric dotted part
+    clean = re.split(r"[^0-9.]", ver.strip())[0]
+    parts = [p for p in clean.split(".") if p.isdigit()]
+    if not parts:
+        return (0,)
+    return tuple(int(p) for p in parts)
 
 
 def needs_update(cfg: dict) -> tuple[bool, str | None, str | None]:
@@ -130,10 +157,12 @@ def needs_update(cfg: dict) -> tuple[bool, str | None, str | None]:
         log.warning("Could not determine latest version — skipping update check.")
         return False, cached, None
 
-    if _version_tuple(latest) > _version_tuple(cached):
-        return True, cached, latest
+    try:
+        should = _version_tuple(latest) > _version_tuple(cached)
+    except Exception:
+        should = False
 
-    return False, cached, latest
+    return should, cached, latest
 
 
 def update_xmrig(cfg: dict, force: bool = False) -> bool:

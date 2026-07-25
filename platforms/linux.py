@@ -4,7 +4,12 @@ platforms/linux.py
 Everything Linux-specific:
   • Locating / downloading / installing XMRig
   • Launching XMRig with a PTY so colour and banner output is preserved
+
+For educational and research purposes only — see DISCLAIMER.md.
 """
+# ── Educational / research use only ─────────────────────────────────────────
+# See DISCLAIMER.md and LICENSE for full legal notices.
+# ────────────────────────────────────────────────────────────────────────────
 
 from __future__ import annotations
 
@@ -45,6 +50,29 @@ def _show_progress(block: int, block_size: int, total: int) -> None:
         print(f"\r  Downloading … {pct:3d}%  ({mb:.1f} / {tot:.1f} MB)", end="", flush=True)
 
 
+def _safe_extractall(tf: tarfile.TarFile, dest: Path) -> None:
+    """
+    Extract a tar archive safely.
+
+    Uses the ``filter="data"`` argument added in Python 3.11.4 / 3.12 to
+    block path-traversal and setuid/setgid members.  Falls back to a manual
+    member-by-member safe extraction on older Python versions.
+    """
+    if sys.version_info >= (3, 11, 4):
+        tf.extractall(dest, filter="data")
+        return
+
+    # Manual safe extraction for Python < 3.11.4
+    for member in tf.getmembers():
+        # Block absolute paths and path traversal
+        if os.path.isabs(member.name) or ".." in member.name.split(os.sep):
+            log.warning("Skipping unsafe tar member: %s", member.name)
+            continue
+        # Block setuid / setgid bits
+        member.mode = member.mode & 0o755
+        tf.extract(member, dest)
+
+
 def download_xmrig(version: str) -> Path:
     """Download the static x64 release from GitHub and unpack to XMRIG_DIR."""
     url = RELEASE_URL.format(version=version)
@@ -64,7 +92,7 @@ def download_xmrig(version: str) -> Path:
             raise RuntimeError(f"Download failed: {exc}") from exc
 
         with tarfile.open(archive, "r:gz") as tf:
-            tf.extractall(tmp, filter="data")
+            _safe_extractall(tf, tmp)
 
         binary = next(
             (p for p in tmp.rglob("xmrig") if p.is_file()),
@@ -88,17 +116,17 @@ def download_xmrig(version: str) -> Path:
 
 def try_package_manager() -> Path | None:
     """
-    Attempt to install xmrig (and lm-sensors) via the system package manager.
+    Attempt to install xmrig via the system package manager.
     Returns the path to xmrig if successful, None otherwise.
     """
     candidates = [
         ("apt-get",
          ["sudo", "apt-get", "update", "-qq"],
          ["sudo", "apt-get", "install", "-y", "xmrig", "lm-sensors"]),
-        ("dnf",   None, ["sudo", "dnf",    "install", "-y", "xmrig", "lm_sensors"]),
-        ("yum",   None, ["sudo", "yum",    "install", "-y", "xmrig", "lm_sensors"]),
-        ("pacman",None, ["sudo", "pacman", "-Syu", "--noconfirm", "xmrig", "lm_sensors"]),
-        ("zypper",None, ["sudo", "zypper", "install", "-y", "xmrig", "lm_sensors"]),
+        ("dnf",    None, ["sudo", "dnf",    "install", "-y", "xmrig", "lm_sensors"]),
+        ("yum",    None, ["sudo", "yum",    "install", "-y", "xmrig", "lm_sensors"]),
+        ("pacman", None, ["sudo", "pacman", "-Syu", "--noconfirm", "xmrig", "lm_sensors"]),
+        ("zypper", None, ["sudo", "zypper", "install", "-y", "xmrig", "lm_sensors"]),
     ]
 
     for mgr, pre_cmd, install_cmd in candidates:
@@ -128,23 +156,19 @@ def ensure_xmrig(version: str) -> Path:
       3. System package manager install
       4. Direct download of static binary from GitHub
     """
-    # 1. Previously downloaded
     if BINARY.exists():
         log.info("Using cached XMRig: %s", BINARY)
         return BINARY
 
-    # 2. Already in PATH
     system = shutil.which("xmrig")
     if system:
         log.info("Using system XMRig: %s", system)
         return Path(system)
 
-    # 3. Try package manager
     pkg = try_package_manager()
     if pkg:
         return pkg
 
-    # 4. Download static binary
     return download_xmrig(version)
 
 
@@ -158,8 +182,8 @@ def launch_process(cmd: list[str]) -> tuple[subprocess.Popen, threading.Event]:
 
     Returns
     -------
-    proc      : subprocess.Popen
-    stop_event: threading.Event — set this to signal the output-forward thread to stop
+    proc       : subprocess.Popen
+    stop_event : threading.Event — set this to signal the output-forward thread to stop
     """
     stop_event = threading.Event()
 

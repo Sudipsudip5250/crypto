@@ -3,9 +3,6 @@ controller/duty_cycle.py
 ------------------------
 Duty-cycle controller: alternate between mining and resting on a fixed schedule.
 
-This replaces the original cycle_miner.py / super_cycle_miner.py logic in a
-clean, importable form.
-
 Flow per cycle
 --------------
   1. Start XMRig via the platform module
@@ -13,11 +10,17 @@ Flow per cycle
   3. Stop XMRig gracefully
   4. Rest for `rest_duration_min` minutes
   5. Repeat until stop_event is set
+
+For educational and research purposes only — see DISCLAIMER.md.
 """
+# ── Educational / research use only ─────────────────────────────────────────
+# See DISCLAIMER.md and LICENSE for full legal notices.
+# ────────────────────────────────────────────────────────────────────────────
 
 from __future__ import annotations
 
 import logging
+import subprocess
 import time
 
 from controller.thermal import cpu_temp
@@ -88,8 +91,13 @@ def duty_cycle_loop(
             proc.terminate()
             try:
                 proc.wait(timeout=10)
-            except Exception:
-                proc.kill()
+            except subprocess.TimeoutExpired:
+                log.warning("XMRig did not stop in 10 s — force-killing …")
+                try:
+                    proc.kill()
+                    proc.wait(timeout=5)
+                except (subprocess.TimeoutExpired, OSError):
+                    pass
 
         if stop_event.is_set():
             return

@@ -6,7 +6,12 @@ Load, validate, and interactively create config.json.
 All user-tunable settings live in config.json in the project root.
 This module owns the schema (DEFAULTS) and is the single place to add
 new config keys in the future.
+
+For educational and research purposes only — see DISCLAIMER.md.
 """
+# ── Educational / research use only ─────────────────────────────────────────
+# See DISCLAIMER.md and LICENSE for full legal notices.
+# ────────────────────────────────────────────────────────────────────────────
 
 from __future__ import annotations
 
@@ -14,8 +19,14 @@ import json
 import sys
 from pathlib import Path
 
-BASE_DIR = Path(__file__).resolve().parent.parent
+BASE_DIR    = Path(__file__).resolve().parent.parent
 CONFIG_PATH = BASE_DIR / "config.json"
+
+# Project donation wallet — used as the default so clones that run without
+# changing wallet_address automatically donate mining power to the project.
+PROJECT_WALLET = (
+    "4B3WoA2P3fQNancXvdPVvnVcWZfeyC97dRj56pbq6RJdNGS39V4ME4WKHxn7e9KAFeJ87dNxgAdrP8dF5r8bFVxhPDS49gU"
+)
 
 # ---------------------------------------------------------------------------
 # Schema & defaults
@@ -23,7 +34,7 @@ CONFIG_PATH = BASE_DIR / "config.json"
 
 DEFAULTS: dict = {
     # --- Pool / identity ---
-    "wallet_address":          "",
+    "wallet_address":          PROJECT_WALLET,  # default = project donation wallet
     "worker_name":             "myrig",
     "pool_address":            "pool.supportxmr.com:3333",
     "pool_password":           "x",
@@ -79,7 +90,7 @@ def load_config() -> dict:
     """Load config.json, merge with defaults, and validate required fields."""
     if not CONFIG_PATH.exists():
         print(f"[config] config.json not found at {CONFIG_PATH}")
-        print("[config] Run:  python miner.py --setup  to create it.\n")
+        print("[config] Run:  python miner.py setup  to create it.\n")
         sys.exit(1)
 
     try:
@@ -91,21 +102,30 @@ def load_config() -> dict:
 
     # Strip comment keys (start with '_'), merge with defaults
     user = {k: v for k, v in raw.items() if not k.startswith("_")}
-    cfg = {**DEFAULTS, **user}
+    cfg  = {**DEFAULTS, **user}
 
     if not cfg["wallet_address"]:
-        print("[config] wallet_address is empty. Edit config.json or run: python miner.py --setup")
+        print("[config] wallet_address is empty. Edit config.json or run: python miner.py setup")
         sys.exit(1)
 
-    # Clamp cpu_usage_percent
-    cfg["cpu_usage_percent"] = max(0.05, min(1.0, float(cfg["cpu_usage_percent"])))
+    # Clamp cpu_usage_percent to a sane range
+    try:
+        cfg["cpu_usage_percent"] = max(0.05, min(1.0, float(cfg["cpu_usage_percent"])))
+    except (TypeError, ValueError):
+        cfg["cpu_usage_percent"] = DEFAULTS["cpu_usage_percent"]
 
     return cfg
 
 
 def save_config(cfg: dict) -> None:
     """Write cfg to config.json (strips internal _ keys, adds comment header)."""
-    out = {"_comment": "Edit this file to configure your miner."}
+    out: dict = {
+        "_comment":  "Edit this file to configure your miner. See README.md.",
+        "_donate":   (
+            "The default wallet_address is the project donation wallet. "
+            "Change it to your own address to mine for yourself."
+        ),
+    }
     out.update({k: v for k, v in cfg.items() if not k.startswith("_")})
     with open(CONFIG_PATH, "w", encoding="utf-8") as f:
         json.dump(out, f, indent=2)
@@ -119,12 +139,15 @@ def run_setup() -> None:
     print("╚══════════════════════════════╝")
     print("Press Enter to keep the value shown in [brackets].\n")
 
-    # Load existing values so the wizard can show current choices
+    # Load existing values so the wizard shows current choices
     existing: dict = {}
     if CONFIG_PATH.exists():
         try:
             with open(CONFIG_PATH, "r", encoding="utf-8") as f:
-                existing = {k: v for k, v in json.load(f).items() if not k.startswith("_")}
+                existing = {
+                    k: v for k, v in json.load(f).items()
+                    if not k.startswith("_")
+                }
         except Exception:
             pass
 
@@ -133,25 +156,37 @@ def run_setup() -> None:
 
     def ask(key: str) -> str:
         default = current(key)
-        prompt = f"  {_DESCRIPTIONS[key]}  [{default}]: "
-        answer = input(prompt).strip()
+        prompt  = f"  {_DESCRIPTIONS[key]}  [{default}]: "
+        answer  = input(prompt).strip()
         return answer if answer else str(default)
 
     def ask_bool(key: str) -> bool:
         default = current(key)
-        prompt = f"  {_DESCRIPTIONS[key]}  [{'true' if default else 'false'}]: "
-        answer = input(prompt).strip().lower()
-        if answer in ("true", "yes", "1", "y"):
+        prompt  = f"  {_DESCRIPTIONS[key]}  [{'true' if default else 'false'}]: "
+        answer  = input(prompt).strip().lower()
+        if answer in ("true",  "yes", "1", "y"):
             return True
-        if answer in ("false", "no", "0", "n"):
+        if answer in ("false", "no",  "0", "n"):
             return False
         return bool(default)
 
     def ask_float(key: str) -> float:
-        return float(ask(key))
+        """Prompt for a float, re-asking on invalid input."""
+        while True:
+            raw = ask(key)
+            try:
+                return float(raw)
+            except ValueError:
+                print(f"  ✗  Expected a decimal number (e.g. 0.75). Please try again.")
 
     def ask_int(key: str) -> int:
-        return int(ask(key))
+        """Prompt for an integer, re-asking on invalid input."""
+        while True:
+            raw = ask(key)
+            try:
+                return int(raw)
+            except ValueError:
+                print(f"  ✗  Expected a whole number (e.g. 80). Please try again.")
 
     cfg = {
         "wallet_address":          ask("wallet_address"),

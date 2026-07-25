@@ -4,33 +4,31 @@ core/requirements.py
 Auto-checks and pip-installs any missing Python packages before the rest of
 the project imports them.  Called at the very top of miner.py so every other
 module can assume its dependencies are present.
+
+For educational and research purposes only — see DISCLAIMER.md.
 """
+# ── Educational / research use only ─────────────────────────────────────────
+# See DISCLAIMER.md and LICENSE for full legal notices.
+# ────────────────────────────────────────────────────────────────────────────
 
 from __future__ import annotations
 
-import importlib
 import importlib.util
 import subprocess
 import sys
 
-# Map  import-name  →  pip install-name
+# Map  import-name  →  pip install-spec
 REQUIRED: dict[str, str] = {
     "psutil": "psutil>=5.9",
 }
 
-# Optional extras (nice-to-have, not fatal if they fail)
-OPTIONAL: dict[str, str] = {
-    "keyboard": "keyboard",   # for future keypress controls on Windows
-}
-
 
 def _is_importable(module_name: str) -> bool:
-    spec = importlib.util.find_spec(module_name)
-    return spec is not None
+    return importlib.util.find_spec(module_name) is not None
 
 
 def _pip_install(pip_spec: str) -> bool:
-    """Return True on success."""
+    """Attempt a quiet pip install. Returns True on success."""
     print(f"  [setup] Installing {pip_spec} …")
     result = subprocess.run(
         [sys.executable, "-m", "pip", "install", "--quiet", pip_spec],
@@ -46,7 +44,7 @@ def check_and_install(*, silent: bool = False) -> None:
     If not, attempt a silent pip install.
     Raises SystemExit if a required package cannot be installed.
     """
-    missing: list[tuple[str, str]] = [
+    missing = [
         (mod, spec)
         for mod, spec in REQUIRED.items()
         if not _is_importable(mod)
@@ -60,8 +58,7 @@ def check_and_install(*, silent: bool = False) -> None:
 
     failed: list[str] = []
     for mod, spec in missing:
-        ok = _pip_install(spec)
-        if not ok:
+        if not _pip_install(spec):
             failed.append(spec)
 
     if failed:
@@ -71,8 +68,3 @@ def check_and_install(*, silent: bool = False) -> None:
 
     if not silent:
         print("[setup] All requirements satisfied.\n")
-
-    # Also try optionals — failures are warnings only
-    for mod, spec in OPTIONAL.items():
-        if not _is_importable(mod):
-            _pip_install(spec)

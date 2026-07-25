@@ -4,7 +4,12 @@ platforms/macos.py
 Everything macOS-specific:
   • Locating / downloading / installing XMRig  (arm64 or x64 tar.gz)
   • Launching XMRig (PTY like Linux for colour output)
+
+For educational and research purposes only — see DISCLAIMER.md.
 """
+# ── Educational / research use only ─────────────────────────────────────────
+# See DISCLAIMER.md and LICENSE for full legal notices.
+# ────────────────────────────────────────────────────────────────────────────
 
 from __future__ import annotations
 
@@ -27,8 +32,9 @@ TOOLS_DIR = BASE_DIR / "tools"
 XMRIG_DIR = TOOLS_DIR / "xmrig"
 BINARY    = XMRIG_DIR / "xmrig"
 
-_ARCH = platform.machine().lower()
+_ARCH   = platform.machine().lower()
 _IS_ARM = any(tag in _ARCH for tag in ("arm", "aarch64"))
+
 
 def _release_url(version: str) -> str:
     suffix = "arm64" if _IS_ARM else "x64"
@@ -51,6 +57,27 @@ def _show_progress(block: int, block_size: int, total: int) -> None:
         print(f"\r  Downloading … {pct:3d}%  ({mb:.1f} / {tot:.1f} MB)", end="", flush=True)
 
 
+def _safe_extractall(tf: tarfile.TarFile, dest: Path) -> None:
+    """
+    Extract a tar archive safely.
+
+    Uses the ``filter="data"`` argument added in Python 3.11.4 / 3.12 to
+    block path-traversal and setuid/setgid members.  Falls back to a manual
+    member-by-member safe extraction on older Python versions.
+    """
+    if sys.version_info >= (3, 11, 4):
+        tf.extractall(dest, filter="data")
+        return
+
+    # Manual safe extraction for Python < 3.11.4
+    for member in tf.getmembers():
+        if os.path.isabs(member.name) or ".." in member.name.split(os.sep):
+            log.warning("Skipping unsafe tar member: %s", member.name)
+            continue
+        member.mode = member.mode & 0o755
+        tf.extract(member, dest)
+
+
 def download_xmrig(version: str) -> Path:
     """Download the macOS release (arm64 or x64) from GitHub."""
     url = _release_url(version)
@@ -70,7 +97,7 @@ def download_xmrig(version: str) -> Path:
             raise RuntimeError(f"Download failed: {exc}") from exc
 
         with tarfile.open(archive, "r:gz") as tf:
-            tf.extractall(tmp, filter="data")
+            _safe_extractall(tf, tmp)
 
         binary = next((p for p in tmp.rglob("xmrig") if p.is_file()), None)
         if binary is None:
