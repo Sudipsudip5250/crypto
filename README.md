@@ -239,8 +239,10 @@ This project is licensed under the **MIT License** — see [LICENSE](LICENSE).
 **Key restrictions:**
 
 - 🚫 **Do not run on cloud platforms** — AWS, GCP, Azure, DigitalOcean, Linode, Heroku,
-  Replit, Vercel, Netlify, GitHub Actions, etc. all **prohibit** cryptocurrency mining
-  in their Terms of Service.
+  Replit, Vercel, Netlify, GitHub Actions, GitHub Codespaces, or any hosted runner.
+  These services prohibit cryptocurrency mining in their Terms of Service. In
+  particular, never use GitHub Actions, Codespaces, GitHub-hosted runners, or
+  self-hosted runners to execute this miner.
 - 🚫 **Do not run on hardware you do not own** without explicit written permission.
 - ⚠️ **Check local laws** — the legal status of cryptocurrency mining varies by jurisdiction.
 - ⚠️ **Tax obligations** — mining income may be taxable in your country.
