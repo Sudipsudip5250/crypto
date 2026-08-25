@@ -7,8 +7,9 @@ support it in two ways — by donating your spare CPU time or by sending XMR dir
 
 ## Option 1 — Mine for the project (donate CPU time)
 
-The default `config.json` already points to the project wallet.
-If you have not changed `wallet_address`, you are already donating every hash you mine.
+The normal `config.json` wallet is intentionally empty until you run setup.
+For an explicit donation session that does not change your configuration, use
+`python miner.py donate-mode` as described below.
 
 ```bash
 ./mine.sh start      # foreground
@@ -44,8 +45,14 @@ Your `config.json` is never modified.
 4B3WoA2P3fQNancXvdPVvnVcWZfeyC97dRj56pbq6RJdNGS39V4ME4WKHxn7e9KAFeJ87dNxgAdrP8dF5r8bFVxhPDS49gU
 ```
 
-You can send any amount of XMR to this address from any Monero wallet
-(Feather Wallet, MyMonero, the official CLI wallet, etc.).
+You can send any amount of **XMR only** to this address from any Monero wallet
+(Feather Wallet, MyMonero, the official CLI wallet, etc.). Do not send BTC, RVN,
+RTM, or any other cryptocurrency to this Monero address.
+
+This address is intentionally public in `README.md`, `DONATE.md`, and the
+`python miner.py donate` command so supporters can verify and use it. It is not
+copied into the normal `config.json`, which stays empty until a user configures
+an address.
 
 ### Verify earnings on the pool dashboard
 
@@ -54,6 +61,20 @@ Mining donations are visible in real time at:
 ```
 https://supportxmr.com/#/dashboard?addr=4B3WoA2P3fQNancXvdPVvnVcWZfeyC97dRj56pbq6RJdNGS39V4ME4WKHxn7e9KAFeJ87dNxgAdrP8dF5r8bFVxhPDS49gU
 ```
+
+---
+
+## Other coins and custom profiles
+
+The controller can pass supported XMRig coin aliases and algorithms to the local
+XMRig binary. Run `python miner.py setup`, select `ravencoin`, `raptoreum`, or
+`custom`, and provide a wallet and pool that belong to that coin. The published
+project address remains Monero-only and is never reused for another coin.
+
+Coin support depends on the selected XMRig release, the pool, the algorithm,
+local hardware, and installed CUDA/OpenCL drivers or plugins. The project does
+not provide profit switching, hidden mining, automatic wallet creation, or hosted
+mining; every run must be started by the local user on permitted hardware.
 
 ---
 

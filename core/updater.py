@@ -48,14 +48,14 @@ def _cached_binary() -> Path | None:
 def write_cached_version(version: str) -> None:
     """Persist the version string to tools/.xmrig_version after a download."""
     TOOLS_DIR.mkdir(exist_ok=True)
-    # Strip any pre-release suffix before storing (e.g. "6.22.2-beta" → "6.22.2")
+    # Strip any pre-release suffix before storing (e.g. "6.26.0-beta" → "6.26.0")
     clean = re.split(r"[^0-9.]", version.strip())[0]
     VERSION_FILE.write_text(clean, encoding="utf-8")
 
 
 def get_cached_version() -> str | None:
     """
-    Return the installed XMRig version string (e.g. "6.22.2").
+    Return the installed XMRig version string (e.g. "6.26.0").
 
     Reads from tools/.xmrig_version (written after every download).
     Falls back to trying the binary's --version flag if that file is absent.
@@ -95,7 +95,7 @@ def get_cached_version() -> str | None:
 def get_latest_version() -> str | None:
     """
     Query the GitHub releases API and return the latest XMRig version string
-    (e.g. "6.22.2"), or None on network / parse failure.
+    (e.g. "6.26.0"), or None on network / parse failure.
     """
     try:
         req = urllib.request.Request(
@@ -111,7 +111,7 @@ def get_latest_version() -> str | None:
             log.warning("GitHub API returned unexpected JSON: %s", exc)
             return None
 
-        tag = data.get("tag_name", "")          # e.g. "v6.22.2"
+        tag = data.get("tag_name", "")          # e.g. "v6.26.0"
         match = re.search(r"(\d+\.\d+\.\d+)", tag)
         if match:
             return match.group(1)
@@ -130,8 +130,8 @@ def _version_tuple(ver: str) -> tuple[int, ...]:
     """
     Convert a version string to a comparable tuple of ints.
 
-    Handles plain releases ("6.22.2") and pre-release suffixes ("6.22.2-beta",
-    "6.22.2-rc1") by stripping everything after the first non-numeric,
+    Handles plain releases ("6.26.0") and pre-release suffixes ("6.26.0-beta",
+    "6.26.0-rc1") by stripping everything after the first non-numeric,
     non-dot character.
     """
     # Keep only the numeric dotted part

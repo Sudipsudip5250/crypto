@@ -9,14 +9,15 @@ Everything Windows-specific:
 from __future__ import annotations
 
 import logging
+import platform
 import shutil
 import subprocess
 import sys
 import tempfile
 import threading
-import urllib.request
-import zipfile
 from pathlib import Path
+
+from core.download import download_verified, safe_extract_zip
 
 log = logging.getLogger("xmr-miner")
 
@@ -25,10 +26,23 @@ TOOLS_DIR = BASE_DIR / "tools"
 XMRIG_DIR = TOOLS_DIR / "xmrig"
 BINARY    = XMRIG_DIR / "xmrig.exe"
 
-RELEASE_URL = (
-    "https://github.com/xmrig/xmrig/releases/download"
-    "/v{version}/xmrig-{version}-msvc-win64.zip"
-)
+RELEASE_BASE = "https://github.com/xmrig/xmrig/releases/download"
+
+_MACHINE = platform.machine().lower()
+_ARCH = "arm64" if any(tag in _MACHINE for tag in ("arm64", "aarch64", "arm")) else "x64"
+
+
+def _release_asset(version: str) -> str:
+    """Return the asset name used by the selected XMRig release."""
+    try:
+        parts = tuple(int(part) for part in version.split(".")[:3])
+    except ValueError:
+        parts = (0,)
+    if parts < (6, 23, 0):
+        if _ARCH != "x64":
+            raise RuntimeError("XMRig versions before 6.23.0 have no Windows ARM64 asset")
+        return f"xmrig-{version}-msvc-win64.zip"
+    return f"xmrig-{version}-windows-{_ARCH}.zip"
 
 
 # ---------------------------------------------------------------------------
@@ -45,9 +59,10 @@ def _show_progress(block: int, block_size: int, total: int) -> None:
 
 
 def download_xmrig(version: str) -> Path:
-    """Download the MSVC Win64 release from GitHub and unpack to XMRIG_DIR."""
-    url = RELEASE_URL.format(version=version)
-    log.info("Downloading XMRig v%s for Windows …", version)
+    """Download the official Windows x64 or ARM64 release from GitHub."""
+    asset_name = _release_asset(version)
+    url = f"{RELEASE_BASE}/v{version}/{asset_name}"
+    log.info("Downloading XMRig v%s for Windows (%s) …", version, _ARCH)
     log.info("  %s", url)
 
     TOOLS_DIR.mkdir(parents=True, exist_ok=True)
@@ -57,13 +72,18 @@ def download_xmrig(version: str) -> Path:
         archive = tmp / "xmrig.zip"
 
         try:
-            urllib.request.urlretrieve(url, archive, reporthook=_show_progress)
+            download_verified(
+                url,
+                archive,
+                version=version,
+                asset_name=asset_name,
+                reporthook=_show_progress,
+            )
             print()
         except Exception as exc:
             raise RuntimeError(f"Download failed: {exc}") from exc
 
-        with zipfile.ZipFile(archive, "r") as zf:
-            zf.extractall(tmp)
+        safe_extract_zip(archive, tmp)
 
         exe = next((p for p in tmp.rglob("xmrig.exe") if p.is_file()), None)
         if exe is None:

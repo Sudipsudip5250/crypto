@@ -15,14 +15,16 @@ from __future__ import annotations
 
 import logging
 import os
+import platform
 import shutil
 import subprocess
 import sys
 import tarfile
 import tempfile
 import threading
-import urllib.request
 from pathlib import Path
+
+from core.download import download_verified
 
 log = logging.getLogger("xmr-miner")
 
@@ -74,8 +76,16 @@ def _safe_extractall(tf: tarfile.TarFile, dest: Path) -> None:
 
 
 def download_xmrig(version: str) -> Path:
-    """Download the static x64 release from GitHub and unpack to XMRIG_DIR."""
+    """Download the official Linux static x64 release and unpack it."""
+    machine = platform.machine().lower()
+    if machine not in {"x86_64", "amd64"}:
+        raise RuntimeError(
+            f"No official static Linux x64 archive matches {machine!r}. "
+            "Install a native XMRig binary or build XMRig for this architecture."
+        )
+
     url = RELEASE_URL.format(version=version)
+    asset_name = f"xmrig-{version}-linux-static-x64.tar.gz"
     log.info("Downloading XMRig v%s for Linux …", version)
     log.info("  %s", url)
 
@@ -86,7 +96,13 @@ def download_xmrig(version: str) -> Path:
         archive = tmp / "xmrig.tar.gz"
 
         try:
-            urllib.request.urlretrieve(url, archive, reporthook=_show_progress)
+            download_verified(
+                url,
+                archive,
+                version=version,
+                asset_name=asset_name,
+                reporthook=_show_progress,
+            )
             print()
         except Exception as exc:
             raise RuntimeError(f"Download failed: {exc}") from exc

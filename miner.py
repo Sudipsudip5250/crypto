@@ -26,10 +26,11 @@ Commands
     version      Show cached + latest XMRig version
     update       Update XMRig to the latest release
     donate       Show donation info and wallet address
-    donate-mode  Mine to project wallet for N min (no config change)
+    donate-mode  Mine to project Monero wallet for N min (no config change)
     config       Open config.json in your editor
     install      Install / upgrade Python dependencies
     reset        Delete cached XMRig binary (re-downloaded on next start)
+    check        Validate config and print a redacted command plan
     help         Show this message
 
 Options (for donate-mode and update)
@@ -51,7 +52,8 @@ Project layout
         daemon.py       — cross-platform bg / stop / status / logs / …
         logger.py       — logging setup
         requirements.py — auto-install missing pip packages
-        updater.py      — XMRig version check and download
+        updater.py      — XMRig version check and update
+        download.py     — verified release downloads and safe extraction
     platforms/
         detect.py       — OS detection, routes to the right module
         linux.py        — Linux:   download static binary, PTY launch
@@ -59,7 +61,7 @@ Project layout
         macos.py        — macOS:   download arm64/x64 binary, PTY launch
     hardware/
         cpu.py          — CPU info, thread count, affinity, XMRig cmd builder
-        gpu.py          — GPU detection (stubs; GPU mining not yet implemented)
+        gpu.py          — GPU capability detection and reporting
     controller/
         process.py      — start / stop / health-check XMRig
         thermal.py      — temperature monitoring, suspend / resume / kill
@@ -78,7 +80,7 @@ import threading
 import time
 
 # ── project modules ─────────────────────────────────────────────────────────
-from core.config  import load_config, run_setup
+from core.config  import load_config, run_setup, PROJECT_WALLET
 from core.logger  import setup_logging, get_logger
 
 from platforms.detect import get_platform_module, info as platform_info
@@ -95,9 +97,7 @@ from controller.duty_cycle import duty_cycle_loop
 # Donation wallet (single source of truth — referenced by donate / donate-mode)
 # ---------------------------------------------------------------------------
 
-DONATE_WALLET = (
-    "4B3WoA2P3fQNancXvdPVvnVcWZfeyC97dRj56pbq6RJdNGS39V4ME4WKHxn7e9KAFeJ87dNxgAdrP8dF5r8bFVxhPDS49gU"
-)
+DONATE_WALLET = PROJECT_WALLET
 
 
 # ---------------------------------------------------------------------------
@@ -108,14 +108,14 @@ _COMMANDS = [
     "start", "bg", "stop", "restart", "status", "logs",
     "setup", "info", "version", "update",
     "donate", "donate-mode",
-    "config", "install", "reset", "help",
+    "config", "install", "reset", "check", "help",
 ]
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="miner.py",
         description=(
-            "XMR Miner Controller — cross-platform Monero mining automation\n"
+            "XMRig Miner Controller — cross-platform configurable mining automation\n"
             "FOR EDUCATIONAL AND RESEARCH PURPOSES ONLY. See DISCLAIMER.md."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -127,6 +127,11 @@ def parse_args() -> argparse.Namespace:
         "command", nargs="?", default=None,
         metavar="COMMAND",
         help=f"One of: {', '.join(_COMMANDS)}",
+    )
+    parser.add_argument(
+        "donate_minutes", nargs="?", type=int, default=None,
+        metavar="MINUTES",
+        help="Duration for donate-mode (only used with donate-mode)",
     )
 
     # ── Options ─────────────────────────────────────────────────────────────
@@ -194,6 +199,7 @@ def print_help() -> None:
   \033[36mconfig\033[0m       Open config.json in your editor
   \033[36minstall\033[0m      Install / upgrade Python dependencies
   \033[36mreset\033[0m        Delete cached XMRig binary  (re-downloaded on next start)
+  \033[36mcheck\033[0m        Validate config and print the planned XMRig command
   \033[36mhelp\033[0m         Show this message
 
 \033[1mOptions:\033[0m
@@ -238,6 +244,30 @@ def print_system_info() -> None:
 
 
 # ---------------------------------------------------------------------------
+# check (configuration only; never starts mining)
+# ---------------------------------------------------------------------------
+
+def check_config() -> None:
+    """Validate the local configuration and print a redacted command plan."""
+    cfg = load_config()
+    pinfo = platform_info()
+    cmd = build_cmd("<xmrig>", cfg)
+    redacted = list(cmd)
+    try:
+        redacted[redacted.index("--user") + 1] = "<wallet configured>"
+        redacted[redacted.index("--pass") + 1] = "<pool password configured>"
+    except (ValueError, IndexError):
+        pass
+
+    print("Configuration is valid.")
+    print(f"  OS / architecture : {pinfo['os']} / {pinfo['arch']}")
+    print(f"  Coin / algorithm  : {cfg.get('coin') or '(algorithm-only)'} / {cfg.get('algorithm') or '(coin alias)'}")
+    print(f"  Backend           : {cfg.get('backend', 'cpu')}")
+    print(f"  Pool              : {cfg['pool_address']}")
+    print("  Planned command   : " + " ".join(redacted))
+
+
+# ---------------------------------------------------------------------------
 # donate (info only)
 # ---------------------------------------------------------------------------
 
@@ -247,11 +277,10 @@ def print_donate_info() -> None:
     print("║              Support & Donate  —  XMR Miner                 ║")
     print("╚══════════════════════════════════════════════════════════════╝")
     print()
-    print("  Option 1 — Mine for the project (donate CPU time)")
-    print("  The default config.json already points to the project wallet.")
-    print("  Leave wallet_address unchanged and run:")
+    print("  Option 1 — Mine for the project (explicit Monero donation session)")
+    print("  The normal config.json wallet is empty until you run setup.")
+    print("  Run this command to donate CPU time without changing your config:")
     print()
-    print("    python miner.py                             mine in foreground")
     print("    python miner.py donate-mode                 donate 10 min (no config change)")
     print("    python miner.py donate-mode --donate-time 30  donate 30 min")
     print()
@@ -291,10 +320,15 @@ def run_donate_mode(minutes: int) -> None:
     print("  Press Ctrl+C at any time to stop early.")
     print()
 
-    cfg = load_config()
+    cfg = load_config(require_wallet=False)
     donate_cfg = copy.deepcopy(cfg)
-    donate_cfg["wallet_address"]      = DONATE_WALLET
-    donate_cfg["worker_name"]         = "donate"
+    donate_cfg["coin"]               = "monero"
+    donate_cfg["algorithm"]          = "rx/0"
+    donate_cfg["backend"]            = "cpu"
+    donate_cfg["wallet_address"]     = DONATE_WALLET
+    donate_cfg["pool_address"]       = "pool.supportxmr.com:3333"
+    donate_cfg["pool_password"]      = "x"
+    donate_cfg["worker_name"]        = "donate"
     donate_cfg["duty_cycle_enabled"]  = False  # always continuous in donate mode
     donate_cfg["log_to_file"]         = False
 
@@ -485,6 +519,8 @@ def main() -> None:
     # ── Informational commands ───────────────────────────────────────────────
     if cmd in ("help", "-h", "--help"):
         print_help(); return
+    if cmd == "check":
+        check_config(); return
     if cmd == "donate":
         print_donate_info(); return
     if cmd == "info":
@@ -495,14 +531,10 @@ def main() -> None:
     # ── donate-mode — also accept minutes as a bare positional after command ─
     # e.g. "python miner.py donate-mode 30"  or  "./mine.sh donate-mode 30"
     if cmd == "donate-mode":
-        # Check if first remaining sys.argv after command is a plain integer
-        minutes = args.donate_time
-        remaining = [a for a in sys.argv[1:] if not a.startswith("-") and a != "donate-mode"]
-        if remaining:
-            try:
-                minutes = int(remaining[0])
-            except ValueError:
-                pass
+        minutes = args.donate_minutes if args.donate_minutes is not None else args.donate_time
+        if not 1 <= minutes <= 1440:
+            print("[miner] donate-mode duration must be between 1 and 1440 minutes.", file=sys.stderr)
+            sys.exit(2)
         run_donate_mode(minutes)
         return
 

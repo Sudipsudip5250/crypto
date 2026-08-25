@@ -22,8 +22,9 @@ import sys
 import tarfile
 import tempfile
 import threading
-import urllib.request
 from pathlib import Path
+
+from core.download import download_verified
 
 log = logging.getLogger("xmr-miner")
 
@@ -81,6 +82,7 @@ def _safe_extractall(tf: tarfile.TarFile, dest: Path) -> None:
 def download_xmrig(version: str) -> Path:
     """Download the macOS release (arm64 or x64) from GitHub."""
     url = _release_url(version)
+    asset_name = f"xmrig-{version}-macos-{'arm64' if _IS_ARM else 'x64'}.tar.gz"
     log.info("Downloading XMRig v%s for macOS (%s) …", version, "arm64" if _IS_ARM else "x64")
     log.info("  %s", url)
 
@@ -91,7 +93,13 @@ def download_xmrig(version: str) -> Path:
         archive = tmp / "xmrig.tar.gz"
 
         try:
-            urllib.request.urlretrieve(url, archive, reporthook=_show_progress)
+            download_verified(
+                url,
+                archive,
+                version=version,
+                asset_name=asset_name,
+                reporthook=_show_progress,
+            )
             print()
         except Exception as exc:
             raise RuntimeError(f"Download failed: {exc}") from exc

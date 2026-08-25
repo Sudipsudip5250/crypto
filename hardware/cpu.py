@@ -145,6 +145,7 @@ def build_cmd(xmrig_path: str | Path, cfg: dict) -> list[str]:
     """
     threads = calculate_threads(cfg["cpu_usage_percent"])
 
+    backend = str(cfg.get("backend", "cpu")).lower()
     cmd: list[str] = [
         str(xmrig_path),
         "--url",        cfg["pool_address"],
@@ -155,16 +156,34 @@ def build_cmd(xmrig_path: str | Path, cfg: dict) -> list[str]:
         f"--cpu-priority={cfg['cpu_priority']}",
     ]
 
-    # Thread and RandomX flags — XMRig on Windows picks threads automatically
-    # so we only pass them explicitly on Linux/macOS
-    if IS_LINUX or IS_MACOS:
-        cmd += [
-            "--threads",       str(threads),
-            f"--randomx-mode={cfg['randomx_mode']}",
-        ]
+    # `--coin` lets XMRig choose the algorithm for supported coin aliases;
+    # custom setups can use `--algo` directly. Supplying --algo is useful for
+    # custom or newer algorithms that are not in this project's small preset list.
+    coin = str(cfg.get("coin", "")).strip()
+    algorithm = str(cfg.get("algorithm", "")).strip()
+    if coin:
+        cmd += ["--coin", coin]
+    if algorithm and not coin:
+        cmd += ["--algo", algorithm]
+
+    if "cpu" in backend:
+        cmd += ["--threads", str(threads)]
+        if algorithm.startswith("rx/") or coin == "monero":
+            cmd += [f"--randomx-mode={cfg['randomx_mode']}"]
+
+    if "cuda" in backend:
+        cmd.append("--cuda")
+        devices = str(cfg.get("cuda_devices", "")).strip()
+        if devices:
+            cmd += [f"--cuda-devices={devices}"]
+    if "opencl" in backend:
+        cmd.append("--opencl")
+        devices = str(cfg.get("opencl_devices", "")).strip()
+        if devices:
+            cmd += [f"--opencl-devices={devices}"]
 
     log.info(
-        "XMRig command: threads=%d  randomx=%s  priority=%d",
-        threads, cfg["randomx_mode"], cfg["cpu_priority"],
+        "XMRig command: coin=%s algorithm=%s backend=%s threads=%d priority=%d",
+        coin or "(none)", algorithm or "(auto)", backend, threads, cfg["cpu_priority"],
     )
     return cmd
