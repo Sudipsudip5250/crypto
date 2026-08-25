@@ -20,16 +20,23 @@ from __future__ import annotations
 
 import os
 import platform
+import re
 import subprocess
 import sys
 import time
 from pathlib import Path
 
-BASE_DIR  = Path(__file__).resolve().parent.parent
-PID_FILE  = BASE_DIR / ".miner.pid"
-LOG_DIR   = BASE_DIR / "logs"
-LOG_FILE  = LOG_DIR  / "miner.log"
-CONFIG    = BASE_DIR / "config.json"
+BASE_DIR = Path(__file__).resolve().parent.parent
+DEFAULT_CONFIG = (BASE_DIR / "config.json").resolve()
+CONFIG = Path(os.environ.get("CRYPTO_CONFIG", str(DEFAULT_CONFIG))).expanduser().resolve()
+
+# Keep the legacy state names for the default config. Separate config files get
+# separate PID/log names so authorized group members do not stop or overwrite
+# one another’s local worker state.
+_state_name = re.sub(r"[^A-Za-z0-9_.-]+", "_", CONFIG.stem) or "worker"
+PID_FILE = BASE_DIR / ".miner.pid" if CONFIG == DEFAULT_CONFIG else BASE_DIR / f".miner-{_state_name}.pid"
+LOG_DIR = BASE_DIR / "logs"
+LOG_FILE = LOG_DIR / "miner.log" if CONFIG == DEFAULT_CONFIG else LOG_DIR / f"miner-{_state_name}.log"
 TOOLS_DIR = BASE_DIR / "tools"
 XMRIG_DIR = TOOLS_DIR / "xmrig"
 

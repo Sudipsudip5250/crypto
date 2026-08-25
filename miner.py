@@ -80,7 +80,7 @@ import threading
 import time
 
 # ── project modules ─────────────────────────────────────────────────────────
-from core.config  import load_config, run_setup, PROJECT_WALLET
+from core.config  import COIN_PRESETS, load_config, run_setup, PROJECT_WALLET, set_config_path
 from core.logger  import setup_logging, get_logger
 
 from platforms.detect import get_platform_module, info as platform_info
@@ -108,7 +108,7 @@ _COMMANDS = [
     "start", "bg", "stop", "restart", "status", "logs",
     "setup", "info", "version", "update",
     "donate", "donate-mode",
-    "config", "install", "reset", "check", "help",
+    "config", "install", "reset", "check", "profiles", "tui", "help",
 ]
 
 def parse_args() -> argparse.Namespace:
@@ -139,6 +139,8 @@ def parse_args() -> argparse.Namespace:
                         help="Minutes to mine in donate-mode (default: 10)")
     parser.add_argument("--force-update", action="store_true",
                         help="Re-download XMRig even if already up-to-date")
+    parser.add_argument("--config", default=None, metavar="PATH",
+                        help="Use a separate local config file for this worker")
 
     # ── Legacy flags (hidden from help but still work) ───────────────────────
     for flag in ("--setup", "--info", "--update", "--version",
@@ -200,11 +202,14 @@ def print_help() -> None:
   \033[36minstall\033[0m      Install / upgrade Python dependencies
   \033[36mreset\033[0m        Delete cached XMRig binary  (re-downloaded on next start)
   \033[36mcheck\033[0m        Validate config and print the planned XMRig command
+  \033[36mprofiles\033[0m     List supported profiles and backend constraints
+  \033[36mtui\033[0m          Open the local terminal interface
   \033[36mhelp\033[0m         Show this message
 
 \033[1mOptions:\033[0m
   --donate-time MINUTES   Duration for donate-mode  (default: 10)
   --force-update          Re-download XMRig even if up-to-date
+  --config PATH            Use a separate local config file for this worker
 
 \033[1mExamples:\033[0m
   python miner.py setup            configure wallet, pool, temp limits
@@ -265,6 +270,21 @@ def check_config() -> None:
     print(f"  Backend           : {cfg.get('backend', 'cpu')}")
     print(f"  Pool              : {cfg['pool_address']}")
     print("  Planned command   : " + " ".join(redacted))
+
+
+# ---------------------------------------------------------------------------
+# profiles (read-only)
+# ---------------------------------------------------------------------------
+
+def print_profiles() -> None:
+    print("\nSupported XMRig profiles")
+    print("-------------------------")
+    for name, preset in COIN_PRESETS.items():
+        coin = str(preset["coin"]) or "(algorithm-only)"
+        backends = ", ".join(str(value) for value in preset["backends"])
+        print(f"  {name:<12} {str(preset['label']):<12} {str(preset['algorithm']):<14} {coin:<16} {backends}")
+    print("  custom       User-defined XMRig coin alias or algorithm")
+    print()
 
 
 # ---------------------------------------------------------------------------
@@ -340,7 +360,9 @@ def run_donate_mode(minutes: int) -> None:
     platform_mod = get_platform_module()
     log_cpu_info()
 
-    xmrig_bin = platform_mod.ensure_xmrig(donate_cfg["xmrig_version"])
+    xmrig_bin = platform_mod.ensure_xmrig(
+        donate_cfg["xmrig_version"], donate_cfg.get("xmrig_path", "")
+    )
     log.info("XMRig binary: %s", xmrig_bin)
 
     stop_event = threading.Event()
@@ -437,7 +459,9 @@ def _do_mine() -> None:
     log_cpu_info()
     log_gpu_info()
 
-    xmrig_bin = platform_mod.ensure_xmrig(cfg["xmrig_version"])
+    xmrig_bin = platform_mod.ensure_xmrig(
+        cfg["xmrig_version"], cfg.get("xmrig_path", "")
+    )
     log.info("XMRig binary: %s", xmrig_bin)
 
     stop_event = threading.Event()
@@ -496,6 +520,8 @@ def _do_mine() -> None:
 
 def main() -> None:
     args = parse_args()
+    if args.config:
+        set_config_path(args.config)
     cmd  = _resolve_command(args)
 
     # ── Commands that delegate to core/daemon.py ────────────────────────────
@@ -521,6 +547,11 @@ def main() -> None:
         print_help(); return
     if cmd == "check":
         check_config(); return
+    if cmd == "profiles":
+        print_profiles(); return
+    if cmd == "tui":
+        from tui import run_tui
+        run_tui(); return
     if cmd == "donate":
         print_donate_info(); return
     if cmd == "info":

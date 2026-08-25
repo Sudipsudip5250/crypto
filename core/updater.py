@@ -178,6 +178,10 @@ def update_xmrig(cfg: dict, force: bool = False) -> bool:
     -------
     True if the binary was (re)installed, False otherwise.
     """
+    if cfg.get("xmrig_path"):
+        log.info("A native XMRig path is configured; automatic archive updates are skipped.")
+        return False
+
     log.info("Checking for XMRig updates …")
     should_update, cached, latest = needs_update(cfg)
 
@@ -201,7 +205,7 @@ def update_xmrig(cfg: dict, force: bool = False) -> bool:
     # Delegate to the correct platform downloader
     from platforms.detect import get_platform_module
     platform_mod = get_platform_module()
-    new_bin = platform_mod.ensure_xmrig(latest)
+    new_bin = platform_mod.ensure_xmrig(latest, "")
 
     log.info("XMRig updated to v%s → %s", latest, new_bin)
 

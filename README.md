@@ -38,7 +38,9 @@ See **[DONATE.md](DONATE.md)** for full details.
 ### Linux / macOS
 ```bash
 chmod +x mine.sh
-./mine.sh setup          # configure wallet, pool, temperature limits
+python miner.py setup                         # configure wallet, pool, profile, backend
+python miner.py --config configs/alice.json setup  # configure a separate worker
+python miner.py tui                            # open the local terminal interface
 ./mine.sh bg             # mine in background (daemon)
 ./mine.sh status         # check if running
 ./mine.sh logs           # watch live log output
@@ -93,11 +95,13 @@ pass everything through to `miner.py`.
 | `version` | Show cached and latest XMRig version |
 | `update` | Update XMRig to the latest GitHub release |
 | `donate` | Show donation wallet and instructions |
-| `donate-mode` | Mine to project wallet for N min (no config change) |
+| `donate-mode` | Explicitly mine to the project Monero wallet for N min (no config change) |
 | `config` | Open `config.json` in your editor |
 | `install` | Install / upgrade Python dependencies |
 | `reset` | Delete cached XMRig binary (re-downloaded on next start) |
 | `check` | Validate configuration and print a redacted command plan without mining |
+| `profiles` | List supported profiles, algorithms, and backend constraints |
+| `tui` | Open the dependency-free local terminal user interface |
 | `help` | Show command reference |
 
 **Options:**
@@ -106,6 +110,7 @@ pass everything through to `miner.py`.
 |--------|---------|-------------|
 | `--donate-time MINUTES` | `10` | Duration for `donate-mode` |
 | `--force-update` | — | Re-download XMRig even if up-to-date |
+| `--config PATH` | `config.json` | Use a separate local worker/group config; JSON files under `configs/` are ignored by Git |
 
 ---
 
@@ -124,8 +129,8 @@ pass everything through to `miner.py`.
 ├── DONATE.md
 │
 ├── core/
-│   ├── config.py         ← load / save / interactive wizard for config.json
-│   ├── daemon.py         ← cross-platform bg / stop / status / logs / reset / …
+│   ├── config.py       — load / save / wizard for config.json and profiles
+│   ├── daemon.py       — cross-platform bg / stop / status / logs / per-worker state
 │   ├── logger.py         ← logging setup (console + file, path-safe)
 │   ├── requirements.py   ← auto-check and pip-install missing packages
 │   └── updater.py        ← XMRig version check and download
@@ -136,6 +141,8 @@ pass everything through to `miner.py`.
 │   ├── windows.py        ← Windows: zip download, plain subprocess launch
 │   └── macos.py          ← macOS:   arm64/x64 download, PTY launch, brew fallback
 │
+├── tui.py              ← dependency-free terminal user interface
+├── configs/             ← per-worker config guidance; JSON files are ignored
 ├── hardware/
 │   ├── cpu.py            ← CPU info, thread count, affinity, XMRig cmd builder
 │   └── gpu.py            ← GPU capability detection; backend flags are selected in config
@@ -153,19 +160,39 @@ pass everything through to `miner.py`.
 
 ## Configuration (`config.json`)
 
-Run `python miner.py setup` for the guided wizard, then run `python miner.py check` to validate the configuration without downloading or launching a miner. The wizard supports Monero, Ravencoin, Raptoreum, and a custom XMRig coin/algorithm entry. Presets select an algorithm identity only; you must supply a valid wallet and pool for the coin you choose.
+Run `python miner.py setup` for the guided wizard, then run `python miner.py check` to validate the configuration without downloading or launching a miner. The wizard supports Monero, ArQmA, Wownero, Keva, Safex, Conceal, Uplexa, Talleo, Raptoreum, Ravencoin, and custom XMRig coin/algorithm entries. Profiles encode the algorithm and CPU/GPU constraint; you must supply a valid wallet and pool for the coin you choose.
 
 ### Coin & Backend
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `coin` | `monero` | XMRig coin alias; use `custom` setup for another supported alias |
+| `profile` | `monero` | Preset profile or `custom` |
+| `coin` | `monero` | XMRig coin alias when supported by XMRig; may be blank for algorithm-only profiles |
 | `algorithm` | `rx/0` | XMRig algorithm for custom configurations |
-| `backend` | `cpu` | `cpu`, `cuda`, `opencl`, `cpu+cuda`, or `cpu+opencl` |
+| `backend` | `cpu` | `cpu`, `cuda`, `opencl`, `cpu+cuda`, or `cpu+opencl`; profile constraints are enforced |
 | `cuda_devices` | empty | Optional comma-separated CUDA device indexes |
 | `opencl_devices` | empty | Optional comma-separated OpenCL device indexes |
 
-XMRig supports additional algorithms and GPU backends, but availability depends on the selected XMRig release, operating-system drivers, hardware, and pool. This project does not claim that every coin or backend works on every machine.
+XMRig supports additional algorithms and GPU backends, but availability depends on the selected XMRig release, operating-system drivers, hardware, and pool. The profiles are conservative mappings to XMRig’s documented algorithms; the custom profile remains available for other supported algorithms. This project does not claim that every coin or backend works on every machine.
+
+| Profile | XMRig algorithm | Default backend | Notes |
+|---|---|---|---|
+| Monero | `--coin monero` / RandomX `rx/0` | CPU | The project’s public donation wallet is valid only for this profile. |
+| ArQmA | `--coin arqma` / `rx/arq` | CPU | Uses XMRig’s documented coin alias. |
+| Wownero, Keva, Safex | `rx/wow`, `rx/keva`, `rx/sfx` | CPU | Algorithm-only profiles; supply your own compatible pool and wallet. |
+| Conceal, Uplexa, Talleo | `cn/ccx`, `cn/upx2`, `cn-pico/tlo` | CPU | Algorithm-only profiles; verify current pool support before use. |
+| Raptoreum | `gr` / GhostRider | CPU | CPU-only according to XMRig’s algorithm documentation. |
+| Ravencoin | `kawpow` | CUDA/OpenCL | GPU-only according to XMRig’s algorithm documentation; a compatible local driver/plugin is required. |
+
+The profile is not a profitability promise. Pool availability, network difficulty, exchange support, local electricity cost, thermals, and hardware efficiency can change independently of this repository.
+
+### Raspberry Pi and ARM Linux
+
+Raspberry Pi 3, Zero 2, Pi 4, Pi 400, CM4, and Pi 5 can run 64-bit ARM operating systems, but the available XMRig package must match `aarch64`/`arm64`. The repository does not download an x86_64 binary onto ARM. On Raspberry Pi or other ARM64 Ubuntu systems, prefer Ubuntu Server or Raspberry Pi OS Lite, keep CPU and temperature limits conservative, and use a locally built or system-installed native XMRig binary when no matching official archive is available. Original Pi 1, Pi 2, and the original Pi Zero are not treated as supported ARM64 targets. See [`configs/README.md`](configs/README.md) for per-worker configuration.
+
+### Terminal user interface
+
+Run `python miner.py tui` for a standard-library TUI. It provides explicit actions for setup, validation, background start/stop/restart, status, logs, system information, and donation information. It never starts mining automatically and uses the same safety checks as the CLI.
 
 ### Pool & Identity
 
@@ -210,6 +237,7 @@ XMRig supports additional algorithms and GPU backends, but availability depends 
 | Key | Default | Description |
 |-----|---------|-------------|
 | `xmrig_version` | `6.26.0` | XMRig release to auto-download and verify |
+| `xmrig_path` | empty | Optional native XMRig executable path; useful for ARM64/Raspberry Pi builds |
 | `log_to_file` | `true` | Also write logs to `logs/miner.log` |
 
 ---
@@ -220,11 +248,12 @@ No binary is bundled — the selected official XMRig release is fetched automati
 
 | OS | Method |
 |----|--------|
-| **Linux** | Downloads the official static x64 archive from GitHub; verifies SHA256; falls back to `apt` / `dnf` / `pacman` / `zypper` |
+| **Linux x86_64** | Downloads the official static x64 archive from GitHub; verifies SHA256; falls back to `apt` / `dnf` / `pacman` / `zypper` |
+| **Linux ARM64** | Uses a native system XMRig if installed; otherwise reports that a local ARM64 build is required rather than downloading x64 |
 | **Windows** | Downloads the official x64 or ARM64 ZIP from GitHub; verifies SHA256 and extracts safely |
 | **macOS** | Downloads the official arm64 or x64 archive from GitHub; verifies SHA256; falls back to `brew install xmrig` |
 
-The binary is cached in `tools/xmrig/` and reused on subsequent runs.
+The binary is cached in `tools/xmrig/` and reused on subsequent runs. Set `xmrig_path` to a native executable when using a local ARM64 build; this takes precedence over downloads and automatic updates. GPU profiles require compatible local drivers and, for CUDA, the XMRig CUDA plugin; the repository does not install GPU drivers or plugins silently.
 Run `python miner.py reset` to delete the cache and force a fresh download.
 
 ---

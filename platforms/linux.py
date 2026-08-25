@@ -163,7 +163,7 @@ def try_package_manager() -> Path | None:
     return None
 
 
-def ensure_xmrig(version: str) -> Path:
+def ensure_xmrig(version: str, native_path: str = "") -> Path:
     """
     Return a Path to a working xmrig binary.
     Priority order:
@@ -172,6 +172,13 @@ def ensure_xmrig(version: str) -> Path:
       3. System package manager install
       4. Direct download of static binary from GitHub
     """
+    if native_path:
+        path = Path(native_path).expanduser().resolve()
+        if not path.is_file() or not os.access(path, os.X_OK):
+            raise RuntimeError(f"Configured XMRig path is not an executable file: {path}")
+        log.info("Using configured native XMRig: %s", path)
+        return path
+
     if BINARY.exists():
         log.info("Using cached XMRig: %s", BINARY)
         return BINARY

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import platform
 import sys
+from pathlib import Path
 from types import ModuleType
 
 
@@ -32,6 +33,20 @@ ARCH       = platform.machine()         # "x86_64" / "aarch64" / "AMD64" …
 PYTHON_VER = platform.python_version()
 
 
+def _raspberry_pi_model() -> str | None:
+    """Return the Linux device-tree model when running on a Raspberry Pi."""
+    if not IS_LINUX:
+        return None
+    try:
+        model = Path("/proc/device-tree/model").read_text(encoding="utf-8", errors="replace").strip("\x00\n")
+    except OSError:
+        return None
+    return model or None
+
+
+RPI_MODEL = _raspberry_pi_model()
+
+
 def info() -> dict:
     """Return a dict summarising the detected environment."""
     return {
@@ -44,6 +59,8 @@ def info() -> dict:
         "is_arm":     IS_ARM,
         "is_x86_64":  IS_X86_64,
         "python":     PYTHON_VER,
+        "is_raspberry_pi": bool(RPI_MODEL),
+        "raspberry_pi_model": RPI_MODEL or "",
     }
 
 

@@ -7,7 +7,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import mock_open, patch
 
-from core.config import PROJECT_WALLET, load_config
+from core.config import COIN_PRESETS, PROJECT_WALLET, load_config
 from core.download import safe_extract_zip
 from hardware.cpu import build_cmd
 
@@ -21,6 +21,20 @@ class ConfigurationTests(unittest.TestCase):
         self.assertEqual(cfg["wallet_address"], "")
         self.assertEqual(len(PROJECT_WALLET), 95)
         self.assertTrue(PROJECT_WALLET.startswith("4"))
+
+    def test_per_worker_config_path_is_supported(self) -> None:
+        with TemporaryDirectory() as directory:
+            config_path = Path(directory) / "alice.json"
+            config_path.write_text(
+                '{"profile": "wownero", "coin": "", "algorithm": "rx/wow", '
+                '"backend": "cpu", "wallet_address": "alice-wallet", '
+                '"pool_address": "pool.example:3333"}',
+                encoding="utf-8",
+            )
+            with patch("core.config.CONFIG_PATH", config_path):
+                cfg = load_config()
+            self.assertEqual(cfg["profile"], "wownero")
+            self.assertEqual(cfg["algorithm"], "rx/wow")
 
     def test_non_monero_cannot_use_published_monero_wallet(self) -> None:
         with patch("core.config.CONFIG_PATH") as config_path:
@@ -56,6 +70,21 @@ class CommandBuilderTests(unittest.TestCase):
         self.assertIn("--threads", cmd)
         self.assertIn("--randomx-mode=auto", cmd)
         self.assertNotIn("--cuda", cmd)
+
+    @patch("hardware.cpu.calculate_threads", return_value=4)
+    def test_all_profiles_build_a_command(self, _threads) -> None:
+        for name, preset in COIN_PRESETS.items():
+            backend = str(tuple(preset["backends"])[0])
+            cfg = self.base_config() | {
+                "profile": name,
+                "coin": str(preset["coin"]),
+                "algorithm": str(preset["algorithm"]),
+                "backend": backend,
+                "wallet_address": f"wallet-for-{name}",
+            }
+            cmd = build_cmd("xmrig", cfg)
+            self.assertIn("--url", cmd)
+            self.assertTrue("--coin" in cmd or "--algo" in cmd)
 
     @patch("hardware.cpu.calculate_threads", return_value=4)
     def test_cuda_command_and_device_selection(self, _threads) -> None:

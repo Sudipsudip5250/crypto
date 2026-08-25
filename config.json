@@ -2,6 +2,7 @@
   "_comment": "Edit this file to configure your miner. See README.md or run: python miner.py --setup",
   "_donate": "The normal wallet is intentionally empty until configured. Use python miner.py donate-mode for an explicit Monero donation session.",
 
+  "profile": "monero",
   "coin": "monero",
   "algorithm": "rx/0",
   "backend": "cpu",
@@ -26,5 +27,6 @@
   "rest_duration_min": 5,
 
   "xmrig_version": "6.26.0",
+  "xmrig_path": "",
   "log_to_file": true
 }

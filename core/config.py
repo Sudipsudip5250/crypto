@@ -16,11 +16,20 @@ For educational and research purposes only — see DISCLAIMER.md.
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
 
-BASE_DIR    = Path(__file__).resolve().parent.parent
-CONFIG_PATH = BASE_DIR / "config.json"
+BASE_DIR = Path(__file__).resolve().parent.parent
+CONFIG_PATH = Path(os.environ.get("CRYPTO_CONFIG", str(BASE_DIR / "config.json"))).expanduser().resolve()
+
+
+def set_config_path(path: str | Path) -> Path:
+    """Select a local config file for one worker or an authorized group member."""
+    global CONFIG_PATH
+    CONFIG_PATH = Path(path).expanduser().resolve()
+    os.environ["CRYPTO_CONFIG"] = str(CONFIG_PATH)
+    return CONFIG_PATH
 
 # Project donation wallet — used only by the explicit donate-mode command.
 PROJECT_WALLET = (
@@ -30,12 +39,26 @@ PROJECT_WALLET = (
 # XMRig supports multiple algorithms and coin aliases. Presets only select
 # the algorithm identity; pool endpoints and wallets remain user-provided so
 # the project does not ship stale or misleading third-party service details.
-COIN_PRESETS: dict[str, dict[str, str]] = {
-    "monero":    {"coin": "monero",    "algorithm": "rx/0"},
-    "ravencoin": {"coin": "ravencoin", "algorithm": "kawpow"},
-    "raptoreum": {"coin": "raptoreum", "algorithm": "ghostrider"},
+COIN_PRESETS: dict[str, dict[str, object]] = {
+    # `coin` is only set where XMRig documents a useful coin alias. Other
+    # profiles use the explicit algorithm flag to avoid passing an unsupported
+    # coin alias to XMRig.
+    "monero":    {"label": "Monero",    "coin": "monero", "algorithm": "rx/0",          "backends": ("cpu",)},
+    "arqma":     {"label": "ArQmA",     "coin": "arqma",  "algorithm": "rx/arq",       "backends": ("cpu",)},
+    "wownero":   {"label": "Wownero",   "coin": "",       "algorithm": "rx/wow",       "backends": ("cpu",)},
+    "keva":      {"label": "Keva",      "coin": "",       "algorithm": "rx/keva",      "backends": ("cpu",)},
+    "safex":     {"label": "Safex",     "coin": "",       "algorithm": "rx/sfx",       "backends": ("cpu",)},
+    "conceal":   {"label": "Conceal",   "coin": "",       "algorithm": "cn/ccx",       "backends": ("cpu",)},
+    "uplexa":    {"label": "Uplexa",    "coin": "",       "algorithm": "cn/upx2",      "backends": ("cpu",)},
+    "talleo":    {"label": "Talleo",    "coin": "",       "algorithm": "cn-pico/tlo",  "backends": ("cpu",)},
+    "raptoreum": {"label": "Raptoreum", "coin": "",       "algorithm": "gr",           "backends": ("cpu",)},
+    "ravencoin": {"label": "Ravencoin", "coin": "",       "algorithm": "kawpow",       "backends": ("cuda", "opencl")},
 }
 BACKENDS = ("cpu", "cuda", "opencl", "cpu+cuda", "cpu+opencl")
+
+
+def _backend_parts(backend: str) -> set[str]:
+    return {part for part in backend.split("+") if part}
 
 # ---------------------------------------------------------------------------
 # Schema & defaults
@@ -43,6 +66,7 @@ BACKENDS = ("cpu", "cuda", "opencl", "cpu+cuda", "cpu+opencl")
 
 DEFAULTS: dict = {
     # --- Coin / algorithm ---
+    "profile":                 "monero",
     "coin":                    "monero",
     "algorithm":               "rx/0",
     "backend":                 "cpu",
@@ -57,7 +81,7 @@ DEFAULTS: dict = {
 
     # --- CPU resource limits ---
     "cpu_usage_percent":       0.70,   # fraction of logical cores (0.1–1.0)
-    "randomx_mode":            "auto", # auto | light | hard
+    "randomx_mode":            "auto", # auto | fast | light
     "cpu_priority":            2,      # 0 (lowest) … 5 (highest)
 
     # --- Thermal protection ---
@@ -73,14 +97,16 @@ DEFAULTS: dict = {
 
     # --- XMRig binary ---
     "xmrig_version":           "6.26.0",
+    "xmrig_path":              "",      # optional native/system binary path
 
     # --- Logging ---
     "log_to_file":             True,
 }
 
 _DESCRIPTIONS: dict[str, str] = {
+    "profile":                 "Coin profile / preset",
     "wallet_address":          "Your wallet address for the selected coin",
-    "coin":                    "Coin alias / preset",
+    "coin":                    "XMRig coin alias (optional)",
     "algorithm":               "XMRig algorithm (for custom setups)",
     "backend":                 "Backend: cpu, cuda, opencl, cpu+cuda, or cpu+opencl",
     "cuda_devices":            "CUDA device indexes (optional, comma-separated)",
@@ -89,7 +115,7 @@ _DESCRIPTIONS: dict[str, str] = {
     "pool_address":            "Pool host:port  (e.g. pool.supportxmr.com:3333)",
     "pool_password":           "Pool password   (usually 'x')",
     "cpu_usage_percent":       "CPU fraction to use  (0.1 – 1.0)",
-    "randomx_mode":            "RandomX mode    (auto | light | hard)",
+    "randomx_mode":            "RandomX mode    (auto | fast | light)",
     "cpu_priority":            "Process priority (0=lowest … 5=highest)",
     "pause_temp_c":            "Suspend miner above this CPU temp (°C)",
     "resume_temp_c":           "Resume miner below this CPU temp  (°C)",
@@ -99,6 +125,7 @@ _DESCRIPTIONS: dict[str, str] = {
     "mine_duration_min":       "  ↳ Mine for this many minutes per cycle",
     "rest_duration_min":       "  ↳ Rest for this many minutes per cycle",
     "xmrig_version":           "XMRig version to auto-download from GitHub",
+    "xmrig_path":              "Optional native XMRig binary path (useful on ARM64)",
     "log_to_file":             "Save logs to logs/miner.log?  (true / false)",
 }
 
@@ -125,18 +152,38 @@ def load_config(*, require_wallet: bool = True) -> dict:
     user = {k: v for k, v in raw.items() if not k.startswith("_")}
     cfg  = {**DEFAULTS, **user}
 
-    cfg["coin"] = str(cfg.get("coin", "monero")).strip().lower() or "monero"
-    cfg["algorithm"] = str(cfg.get("algorithm", "rx/0")).strip().lower() or "rx/0"
+    cfg["coin"] = str(cfg.get("coin", "monero")).strip().lower()
+    cfg["algorithm"] = str(cfg.get("algorithm", "rx/0")).strip().lower()
+    raw_profile = str(user.get("profile", "")).strip().lower()
+    if not raw_profile:
+        raw_profile = next(
+            (name for name, values in COIN_PRESETS.items()
+             if str(values["coin"]) == cfg["coin"]
+             and str(values["algorithm"]) == cfg["algorithm"]),
+            "custom",
+        )
+    cfg["profile"] = raw_profile
+    if not cfg["coin"] and not cfg["algorithm"]:
+        cfg["coin"], cfg["algorithm"] = "monero", "rx/0"
     cfg["backend"] = str(cfg.get("backend", "cpu")).strip().lower() or "cpu"
     if cfg["backend"] not in BACKENDS:
         print(f"[config] Unsupported backend {cfg['backend']!r}. Choose from: {', '.join(BACKENDS)}")
         sys.exit(1)
+    if cfg["profile"] in COIN_PRESETS:
+        preset = COIN_PRESETS[cfg["profile"]]
+        allowed = set(preset["backends"])
+        if not _backend_parts(cfg["backend"]).issubset(allowed):
+            print(
+                f"[config] Profile {cfg['profile']!r} supports only: "
+                f"{', '.join(sorted(allowed))}. Choose another backend or run setup."
+            )
+            sys.exit(1)
 
     if require_wallet and not cfg["wallet_address"]:
         print("[config] wallet_address is empty. Edit config.json or run: python miner.py setup")
         sys.exit(1)
-    if cfg["coin"] != "monero" and cfg["wallet_address"] == PROJECT_WALLET:
-        print("[config] The published wallet is Monero-only. Set your own wallet for another coin.")
+    if cfg["profile"] != "monero" and cfg["wallet_address"] == PROJECT_WALLET:
+        print("[config] The published wallet is Monero-only. Set your own wallet for another profile.")
         sys.exit(1)
 
     # RandomX mode is only meaningful for RandomX; keep invalid legacy values
@@ -182,6 +229,7 @@ def save_config(cfg: dict) -> None:
         ),
     }
     out.update({k: v for k, v in cfg.items() if not k.startswith("_")})
+    CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
     with open(CONFIG_PATH, "w", encoding="utf-8") as f:
         json.dump(out, f, indent=2)
     print(f"[config] Saved → {CONFIG_PATH}")
@@ -243,41 +291,44 @@ def run_setup() -> None:
             except ValueError:
                 print(f"  ✗  Expected a whole number (e.g. 80). Please try again.")
 
-    current_coin = str(current("coin")).strip().lower()
-    current_algorithm = str(current("algorithm")).strip().lower()
-    current_preset = next(
-        (name for name, values in COIN_PRESETS.items()
-         if values["coin"] == current_coin and values["algorithm"] == current_algorithm),
-        "custom",
-    )
-    print("  Mining preset: monero, ravencoin, raptoreum, or custom")
-    preset_name = input(f"  Preset [{current_preset}]: ").strip().lower() or current_preset
+    current_profile = str(current("profile")).strip().lower()
+    print("  Profiles: " + ", ".join(COIN_PRESETS) + ", custom")
+    preset_name = input(f"  Profile [{current_profile}]: ").strip().lower() or current_profile
     if preset_name in COIN_PRESETS:
         selected = COIN_PRESETS[preset_name]
-        coin = selected["coin"]
-        algorithm = selected["algorithm"]
+        profile = preset_name
+        coin = str(selected["coin"])
+        algorithm = str(selected["algorithm"])
+        allowed_backends = tuple(str(v) for v in selected["backends"])
+        print(f"  {selected['label']}: algorithm={algorithm}; allowed backends={', '.join(allowed_backends)}")
     else:
+        profile = "custom"
         print("  Custom mode selected. Enter a coin alias, or leave it blank to use an algorithm directly.")
         coin = input("  Coin alias [blank for algorithm-only]: ").strip().lower()
         algorithm = input("  Algorithm [for example kawpow or rx/0]: ").strip().lower()
+        allowed_backends = BACKENDS
         if not coin and not algorithm:
             print("[config] Custom mode requires a coin alias or an algorithm.")
             sys.exit(1)
 
     wallet = ask("wallet_address")
-    if coin != "monero" and wallet == PROJECT_WALLET:
+    if profile != "monero" and wallet == PROJECT_WALLET:
         print("  The published donation wallet is valid for Monero only.")
         wallet = input("  Enter your wallet address for the selected coin (required): ").strip()
         if not wallet:
             print("[config] A non-Monero wallet is required for this preset.")
             sys.exit(1)
 
-    backend = ask("backend").lower()
-    while backend not in BACKENDS:
-        print(f"  Choose one of: {', '.join(BACKENDS)}")
-        backend = input("  Backend [cpu]: ").strip().lower() or "cpu"
+    backend_default = str(current("backend")).lower()
+    if backend_default not in BACKENDS or not _backend_parts(backend_default).issubset(set(allowed_backends)):
+        backend_default = allowed_backends[0]
+    backend = input(f"  {_DESCRIPTIONS['backend']}  [{backend_default}]: ").strip().lower() or backend_default
+    while backend not in BACKENDS or not _backend_parts(backend).issubset(set(allowed_backends)):
+        print(f"  Choose a compatible backend: {', '.join(allowed_backends)}")
+        backend = input(f"  Backend [{backend_default}]: ").strip().lower() or backend_default
 
     cfg = {
+        "profile":                 profile,
         "coin":                    coin,
         "algorithm":               algorithm,
         "backend":                 backend,
@@ -298,6 +349,7 @@ def run_setup() -> None:
         "mine_duration_min":       ask_int("mine_duration_min"),
         "rest_duration_min":       ask_int("rest_duration_min"),
         "xmrig_version":           ask("xmrig_version"),
+        "xmrig_path":              ask("xmrig_path"),
         "log_to_file":             ask_bool("log_to_file"),
     }
 

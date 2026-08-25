@@ -101,14 +101,21 @@ def download_xmrig(version: str) -> Path:
     return BINARY
 
 
-def ensure_xmrig(version: str) -> Path:
+def ensure_xmrig(version: str, native_path: str = "") -> Path:
     """
-    Return a Path to xmrig.exe.
+    Return a Path to xmrig.exe, using a configured native path first.
     Priority:
       1. Already-downloaded binary in tools/xmrig/
       2. System-installed binary in PATH
       3. Download from GitHub
     """
+    if native_path:
+        path = Path(native_path).expanduser().resolve()
+        if not path.is_file():
+            raise RuntimeError(f"Configured XMRig path is not a file: {path}")
+        log.info("Using configured native XMRig: %s", path)
+        return path
+
     if BINARY.exists():
         log.info("Using cached XMRig: %s", BINARY)
         return BINARY
